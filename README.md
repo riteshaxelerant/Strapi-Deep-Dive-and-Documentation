@@ -1,12 +1,34 @@
 # Strapi Deep Dive and Documentation Project
 
+## What is Strapi?
+
+Strapi is an open-source headless Content Management System (CMS) built on a modern JavaScript stack. It uses Node.js as the runtime environment and the Koa web framework as its backbone. Unlike traditional monolithic CMS platforms, Strapi follows a headless architecture that decouples content management from front-end presentation. This allows content to be delivered via REST or GraphQL APIs to any device or platform, providing developers with the flexibility to build modern, multi-channel applications.
+
+**Key Differentiators:**
+- **Headless Architecture**: Content and presentation are separated, enabling API-first content delivery
+- **Modern Tech Stack**: Built on Node.js and Koa, leveraging JavaScript ecosystem
+- **Developer-Friendly**: Self-hosted, customizable, and extensible through plugins and custom code
+- **API-First**: Native REST and GraphQL API support out of the box
+
+## Recommended Setup
+
+For optimal Strapi development experience, the following setup is recommended:
+
+- **OS**: macOS or Linux (better development experience)
+- **Node.js**: v20.x or v22.x (Active LTS)
+- **npm**: v10.x or higher
+- **Yarn**: Latest version
+- **NVM**: For version management
+- **RAM**: 8GB or more
+- **Disk Space**: 2GB+ for multiple projects
+- **Database**: PostgreSQL for production
+
 ## Project Overview
 
 This project aims to build a comprehensive understanding of Strapi CMS through hands-on exploration and structured documentation. The goal is to create detailed documentation that supports easy ramp-up for developers, capturing learnings, decisions, and workflows.
 
 ## Target Audience
 
-- Web developers with WordPress experience transitioning to Strapi
 - Developers looking to understand Strapi architecture and best practices
 - Teams implementing Strapi-based solutions
 
@@ -26,8 +48,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 **Goal:** Establish a solid foundation with Strapi installation, configuration, and basic understanding.
 
 #### Step 1.1: Environment Setup and Installation
+- [ ] Review official Strapi documentation: [Quick Start Guide](https://docs.strapi.io/dev-docs/quick-start)
+- [ ] Ensure that npm and Node.js are already installed
+- [ ] Install Yarn and NVM (Optional but Recommended). NVM is used to switch between projects having different node versions
 - [ ] Research and document Strapi version requirements and compatibility
-- [ ] Set up development environment (Node.js, database options)
+- [ ] Set up development environment (database options)
 - [ ] Install Strapi locally (multiple methods: CLI, Docker, etc.)
 - [ ] Document installation process with screenshots
 - [ ] Set up Strapi Cloud account (if applicable)
@@ -43,7 +68,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Study Strapi core architecture and file structure
 - [ ] Document project folder structure and purpose of each directory
 - [ ] Understand Strapi's plugin system
-- [ ] Explore Strapi's database layer (SQLite, PostgreSQL, MySQL, MongoDB)
+- [ ] Explore Strapi's database layer (SQLite, PostgreSQL, MySQL)
 - [ ] Document request lifecycle and middleware
 - [ ] Study Strapi's admin panel architecture
 
