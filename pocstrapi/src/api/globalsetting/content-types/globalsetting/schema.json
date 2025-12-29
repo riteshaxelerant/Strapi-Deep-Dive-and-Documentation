@@ -1,0 +1,28 @@
+{
+  "kind": "singleType",
+  "collectionName": "globalsettings",
+  "info": {
+    "singularName": "globalsetting",
+    "pluralName": "globalsettings",
+    "displayName": "globalsetting"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "siteTitle": {
+      "type": "string"
+    },
+    "siteLogo": {
+      "type": "media",
+      "multiple": false,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "copyrightText": {
+      "type": "text"
+    }
+  }
+}

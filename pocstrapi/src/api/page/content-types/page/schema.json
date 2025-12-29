@@ -1,0 +1,27 @@
+{
+  "kind": "collectionType",
+  "collectionName": "pages",
+  "info": {
+    "singularName": "page",
+    "pluralName": "pages",
+    "displayName": "Page"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string"
+    },
+    "addFields": {
+      "type": "dynamiczone",
+      "components": [
+        "shared.testimonial",
+        "shared.richtexteditor",
+        "shared.media",
+        "section.faq-list"
+      ]
+    }
+  }
+}

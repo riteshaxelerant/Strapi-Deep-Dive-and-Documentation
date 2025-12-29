@@ -1,0 +1,14 @@
+{
+  "collectionName": "components_shared_richtexteditors",
+  "info": {
+    "displayName": "richtexteditor",
+    "icon": "book"
+  },
+  "options": {},
+  "attributes": {
+    "fieldEditor": {
+      "type": "richtext"
+    }
+  },
+  "config": {}
+}

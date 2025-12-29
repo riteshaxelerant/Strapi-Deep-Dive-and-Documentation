@@ -1,0 +1,18 @@
+{
+  "collectionName": "components_section_faq_lists",
+  "info": {
+    "displayName": "FAQ List"
+  },
+  "options": {},
+  "attributes": {
+    "title": {
+      "type": "string"
+    },
+    "addFAQ": {
+      "type": "component",
+      "component": "shared.faq",
+      "repeatable": true
+    }
+  },
+  "config": {}
+}
