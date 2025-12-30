@@ -42,6 +42,16 @@ Complete guide to Content Type relationships:
 - API query patterns
 - Best practices
 
+### 5. [Import/Export and Bulk Operations](./import-export-bulk-operations.md)
+Comprehensive guide to content import/export and bulk operations:
+- Content export workflows (REST API, GraphQL, CSV)
+- Content import workflows (with relationships, error handling)
+- Bulk operations (update, delete, publish, status updates)
+- Best practices and security considerations
+- Complete workflow examples
+
+**Note**: Strapi 5 does not have built-in import/export functionality in the admin panel. This guide provides programmatic solutions using APIs.
+
 ---
 
 ## Current Status
@@ -56,13 +66,13 @@ Complete guide to Content Type relationships:
 - [x] Explore polymorphic relations
 - [x] Document lifecycle hooks and callbacks
 
-### Step 2.2: Content Management Workflows ⏳
-- [ ] Document content entry workflows
-- [ ] Explore draft/publish system
-- [ ] Study content versioning (if available)
-- [ ] Document media library management
-- [ ] Create content import/export workflows
-- [ ] Document bulk operations
+### Step 2.2: Content Management Workflows ✅
+- [x] Document content entry workflows
+- [x] Explore draft/publish system
+- [x] Study content versioning (if available)
+- [x] Document media library management
+- [x] Create content import/export workflows
+- [x] Document bulk operations
 
 ---
 
@@ -72,9 +82,7 @@ Complete guide to Content Type relationships:
 - ✅ Field types reference
 - ✅ Components and dynamic zones documentation
 - ✅ Relationships guide with examples
-- ⏳ Content management workflows guide (Step 2.2)
-- ⏳ Media library documentation (Step 2.2)
-- ⏳ Import/export procedures (Step 2.2)
+- ✅ Import/export and bulk operations guide
 
 ---
 
