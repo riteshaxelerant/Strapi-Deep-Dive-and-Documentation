@@ -20,7 +20,14 @@ Complete reference for all Strapi configuration:
 - Security best practices
 - Environment-specific settings
 
-### 3. [Architecture Overview](./architecture-overview.md)
+### 3. [CRON Jobs](./cron-jobs.md)
+Guide to scheduled tasks and CRON jobs:
+- CRON job configuration
+- CRON expression syntax
+- Common use cases and examples
+- Best practices and monitoring
+
+### 4. [Architecture Overview](./architecture-overview.md)
 Comprehensive overview of Strapi's architecture:
 - Core architecture principles
 - Complete file structure explanation

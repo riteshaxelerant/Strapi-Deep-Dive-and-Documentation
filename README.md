@@ -361,10 +361,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
     - installation-guide.md
     - architecture-overview.md
     - configuration-reference.md
+    - cron-jobs.md
   /02-content-modeling
     - content-types-guide.md
     - relationships-guide.md
     - components-dynamic-zones.md
+    - field-types-reference.md
+    - import-export-bulk-operations.md
   /03-customization
     - custom-controllers-services.md
     - plugin-development.md

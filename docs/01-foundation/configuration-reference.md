@@ -12,12 +12,14 @@ my-strapi-project/
 ├── .env.example           # Example environment variables
 ├── config/
 │   ├── database.js        # Database configuration
-│   ├── server.js          # Server configuration
+│   ├── server.js          # Server configuration (includes CRON jobs)
 │   ├── admin.js           # Admin panel configuration
 │   ├── middlewares.js     # Middleware configuration
 │   └── plugins.js         # Plugin configuration
 └── package.json           # Project dependencies and scripts
 ```
+
+**Note**: For detailed CRON jobs configuration, see [CRON Jobs Documentation](./cron-jobs.md).
 
 ---
 
@@ -162,8 +164,16 @@ module.exports = ({ env }) => ({
   webhooks: {
     populateRelations: env.bool('WEBHOOKS_POPULATE_RELATIONS', false),
   },
+  cron: {
+    enabled: env.bool('CRON_ENABLED', true),
+    tasks: {
+      // CRON job definitions
+    },
+  },
 });
 ```
+
+**Note**: For detailed CRON jobs configuration and examples, see [CRON Jobs Documentation](./cron-jobs.md).
 
 **Common Customizations:**
 
