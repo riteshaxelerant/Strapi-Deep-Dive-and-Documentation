@@ -1,0 +1,15 @@
+{
+  "stripe-demo.plugin.name": "Stripe Demo",
+  "stripe-demo.config.title": "Stripe Configuration",
+  "stripe-demo.config.description": "Configure your Stripe API key. Only super administrators can access this page.",
+  "stripe-demo.config.key.label": "Stripe API Key",
+  "stripe-demo.config.key.placeholder": "Enter your Stripe API key (e.g., sk_test_...)",
+  "stripe-demo.config.key.hint": "Your Stripe API key starts with sk_test_ for test mode or sk_live_ for live mode",
+  "stripe-demo.config.current.label": "Current Configuration:",
+  "stripe-demo.config.save.button": "Save Configuration",
+  "stripe-demo.config.save.success": "Stripe key saved successfully",
+  "stripe-demo.config.save.error": "Failed to save configuration",
+  "stripe-demo.config.load.error": "Failed to load configuration",
+  "stripe-demo.config.validation.required": "Stripe key is required",
+  "stripe-demo.config.validation.format": "Stripe key should start with sk_test_ or sk_live_"
+}

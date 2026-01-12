@@ -34,6 +34,29 @@ export interface SharedMedia extends Struct.ComponentSchema {
   };
 }
 
+export interface SharedOpenGraph extends Struct.ComponentSchema {
+  collectionName: 'components_shared_open_graphs';
+  info: {
+    displayName: 'openGraph';
+    icon: 'project-diagram';
+  };
+  attributes: {
+    ogDescription: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 200;
+      }>;
+    ogImage: Schema.Attribute.Media<'images'>;
+    ogTitle: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMaxLength<{
+        maxLength: 70;
+      }>;
+    ogType: Schema.Attribute.String;
+    ogUrl: Schema.Attribute.String;
+  };
+}
+
 export interface SharedRichtexteditor extends Struct.ComponentSchema {
   collectionName: 'components_shared_richtexteditors';
   info: {
@@ -42,6 +65,20 @@ export interface SharedRichtexteditor extends Struct.ComponentSchema {
   };
   attributes: {
     fieldEditor: Schema.Attribute.RichText;
+  };
+}
+
+export interface SharedSeo extends Struct.ComponentSchema {
+  collectionName: 'components_shared_seos';
+  info: {
+    displayName: 'seo';
+    icon: 'earth';
+  };
+  attributes: {
+    excerpt: Schema.Attribute.Text;
+    metaDescription: Schema.Attribute.Text;
+    ogImage: Schema.Attribute.Media<'images', true>;
+    seoTitle: Schema.Attribute.String;
   };
 }
 
@@ -64,7 +101,9 @@ declare module '@strapi/strapi' {
       'section.faq-list': SectionFaqList;
       'shared.faq': SharedFaq;
       'shared.media': SharedMedia;
+      'shared.open-graph': SharedOpenGraph;
       'shared.richtexteditor': SharedRichtexteditor;
+      'shared.seo': SharedSeo;
       'shared.testimonial': SharedTestimonial;
     }
   }
