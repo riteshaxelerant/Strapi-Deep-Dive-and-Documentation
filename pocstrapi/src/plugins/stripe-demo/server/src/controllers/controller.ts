@@ -54,6 +54,46 @@ const controller = ({ strapi }: { strapi: Core.Strapi }) => ({
   },
 
   /**
+   * Create a Stripe payment intent
+   * POST /api/stripe-demo/pay
+   */
+  async createPaymentIntent(ctx: any) {
+    try {
+      // Get amount from request body
+      const { amount } = ctx.request.body;
+
+      // Validate amount - must be a number and greater than 0
+      if (!amount || isNaN(amount) || amount <= 0) {
+        return ctx.badRequest('Amount is required and must be a positive number');
+      }
+
+      // Convert amount to number
+      const amountNumber = parseFloat(amount);
+
+      // Create payment intent using service
+      const paymentIntent = await strapi
+        .plugin('stripe-demo')
+        .service('service')
+        .createPaymentIntent(amountNumber);
+
+      // Return the payment intent
+      ctx.body = {
+        paymentIntent,
+      };
+    } catch (error: any) {
+      // Handle errors and return proper error response
+      strapi.log.error('Error creating payment intent:', error);
+      
+      ctx.status = 400;
+      ctx.body = {
+        error: {
+          message: error.message || 'Failed to create payment intent',
+        },
+      };
+    }
+  },
+
+  /**
    * Index method (keeping for compatibility)
    */
   index(ctx: any) {

@@ -10,5 +10,13 @@ export default () => ({
         policies: [],
       },
     },
+    {
+      method: 'POST',
+      path: '/pay',
+      handler: 'controller.createPaymentIntent',
+      config: {
+        policies: [],
+      },
+    },
   ],
 });
