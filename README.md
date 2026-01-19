@@ -5,6 +5,7 @@
 Strapi is an open-source headless Content Management System (CMS) built on a modern JavaScript stack. It uses Node.js as the runtime environment and the Koa web framework as its backbone. Unlike traditional monolithic CMS platforms, Strapi follows a headless architecture that decouples content management from front-end presentation. This allows content to be delivered via REST or GraphQL APIs to any device or platform, providing developers with the flexibility to build modern, multi-channel applications.
 
 **Key Differentiators:**
+
 - **Headless Architecture**: Content and presentation are separated, enabling API-first content delivery
 - **Modern Tech Stack**: Built on Node.js and Koa, leveraging JavaScript ecosystem
 - **Developer-Friendly**: Self-hosted, customizable, and extensible through plugins and custom code
@@ -45,9 +46,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ## Roadmap
 
 ### Phase 1: Foundation and Setup
+
 **Goal:** Establish a solid foundation with Strapi installation, configuration, and basic understanding.
 
 #### Step 1.1: Environment Setup and Installation
+
 - [ ] Review official Strapi documentation: [Quick Start Guide](https://docs.strapi.io/dev-docs/quick-start)
 - [ ] Ensure that npm and Node.js are already installed
 - [ ] Install Yarn and NVM (Optional but Recommended). NVM is used to switch between projects having different node versions
@@ -60,11 +63,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document environment variables and configuration files
 
 **Deliverables:**
+
 - Installation guide with step-by-step instructions
 - Environment setup documentation
 - Configuration reference guide
 
 #### Step 1.2: Strapi Architecture Overview
+
 - [ ] Study Strapi core architecture and file structure
 - [ ] Document project folder structure and purpose of each directory
 - [ ] Understand Strapi's plugin system
@@ -73,6 +78,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Study Strapi's admin panel architecture
 
 **Deliverables:**
+
 - Architecture overview document
 - File structure reference
 - Core concepts documentation
@@ -80,9 +86,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 2: Content Modeling and Management
+
 **Goal:** Master content types, relationships, and content management in Strapi.
 
 #### Step 2.1: Content Types Deep Dive
+
 - [ ] Create and document basic content types
 - [ ] Explore all field types (Text, Number, Date, Media, JSON, etc.)
 - [ ] Document field configurations and validation options
@@ -93,12 +101,14 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document lifecycle hooks and callbacks
 
 **Deliverables:**
+
 - Content types guide
 - Field types reference
 - Components and dynamic zones documentation
 - Relationships guide with examples
 
 #### Step 2.2: Content Management Workflows
+
 - [ ] Document content entry workflows
 - [ ] Explore draft/publish system
 - [ ] Study content versioning (if available)
@@ -107,6 +117,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document bulk operations
 
 **Deliverables:**
+
 - Content management workflows guide
 - Media library documentation
 - Import/export procedures
@@ -114,9 +125,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 3: Customization and Extensions
+
 **Goal:** Learn to extend Strapi functionality through custom code, plugins, and configurations.
 
 #### Step 3.1: Custom Controllers, Services, and Models
+
 - [ ] Study Strapi's MVC-like structure
 - [ ] Create custom controllers
 - [ ] Implement custom services
@@ -125,11 +138,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Explore custom routes and endpoints
 
 **Deliverables:**
+
 - Customization guide
 - Code examples and patterns
 - Best practices documentation
 
 #### Step 3.2: Custom Plugins Development
+
 - [ ] Study Strapi plugin architecture
 - [ ] Create a simple custom plugin
 - [ ] Document plugin structure and requirements
@@ -138,11 +153,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document plugin distribution and installation
 
 **Deliverables:**
+
 - Plugin development guide
 - Plugin examples
 - Plugin architecture documentation
 
 #### Step 3.3: API Customization
+
 - [ ] Customize REST API endpoints
 - [ ] Implement GraphQL customizations
 - [ ] Document API response transformations
@@ -151,6 +168,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document error handling patterns
 
 **Deliverables:**
+
 - API customization guide
 - REST and GraphQL documentation
 - Custom endpoints examples
@@ -158,9 +176,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 4: Security and Access Control
+
 **Goal:** Understand and document Strapi's security features, roles, and permissions.
 
 #### Step 4.1: Roles and Permissions System
+
 - [ ] Study default roles (Public, Authenticated, Admin)
 - [ ] Create custom roles
 - [ ] Document permission types (find, findOne, create, update, delete, etc.)
@@ -169,11 +189,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Study role-based access control (RBAC) patterns
 
 **Deliverables:**
+
 - Roles and permissions guide
 - RBAC documentation
 - Permission configuration examples
 
 #### Step 4.2: Authentication and Authorization
+
 - [ ] Document authentication providers (JWT, OAuth, etc.)
 - [ ] Study user management
 - [ ] Explore custom authentication strategies
@@ -182,6 +204,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document CORS and security headers
 
 **Deliverables:**
+
 - Authentication guide
 - Security best practices
 - User management documentation
@@ -189,9 +212,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 5: APIs and Integrations
+
 **Goal:** Master Strapi's API capabilities and integration patterns.
 
 #### Step 5.1: REST API
+
 - [ ] Document REST API endpoints
 - [ ] Explore query parameters and filtering
 - [ ] Study pagination and sorting
@@ -200,11 +225,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document API rate limiting
 
 **Deliverables:**
+
 - REST API reference
 - API usage examples
 - Query parameters guide
 
 #### Step 5.2: GraphQL API
+
 - [ ] Enable and configure GraphQL plugin
 - [ ] Document GraphQL schema
 - [ ] Create GraphQL queries and mutations
@@ -213,11 +240,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Create GraphQL examples
 
 **Deliverables:**
+
 - GraphQL API guide
 - GraphQL examples and patterns
 - Schema documentation
 
 #### Step 5.3: External Integrations
+
 - [ ] Document webhook system
 - [ ] Explore third-party service integrations
 - [ ] Study API consumption patterns
@@ -225,6 +254,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Create integration templates
 
 **Deliverables:**
+
 - Integration guide
 - Webhook documentation
 - Third-party integration examples
@@ -232,9 +262,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 6: Deployment and Production
+
 **Goal:** Understand deployment patterns, optimization, and production considerations.
 
 #### Step 6.1: Deployment Patterns
+
 - [ ] Document deployment options (VPS, cloud platforms, containers)
 - [ ] Study Docker deployment
 - [ ] Document environment-specific configurations
@@ -243,11 +275,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Study backup and restore procedures
 
 **Deliverables:**
+
 - Deployment guide
 - Docker documentation
 - CI/CD integration guide
 
 #### Step 6.2: Performance Optimization
+
 - [ ] Document performance best practices
 - [ ] Study caching strategies
 - [ ] Explore database optimization
@@ -256,11 +290,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document monitoring and logging
 
 **Deliverables:**
+
 - Performance optimization guide
 - Caching strategies
 - Monitoring documentation
 
 #### Step 6.3: Strapi Cloud
+
 - [ ] Explore Strapi Cloud features
 - [ ] Document Strapi Cloud limitations
 - [ ] Compare Strapi Cloud vs self-hosted
@@ -269,6 +305,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document Strapi Cloud workflows
 
 **Deliverables:**
+
 - Strapi Cloud guide
 - Feature comparison document
 - Migration guide
@@ -276,9 +313,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 7: Advanced Topics and Best Practices
+
 **Goal:** Explore advanced features and establish best practices.
 
 #### Step 7.1: Advanced Features
+
 - [ ] Study internationalization (i18n)
 - [ ] Explore multi-tenancy patterns
 - [ ] Document custom admin panel modifications
@@ -287,11 +326,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Document debugging techniques
 
 **Deliverables:**
+
 - Advanced features guide
 - Testing documentation
 - Debugging guide
 
 #### Step 7.2: Best Practices and Patterns
+
 - [ ] Document code organization patterns
 - [ ] Study project structure best practices
 - [ ] Document naming conventions
@@ -300,6 +341,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Create style guide and conventions
 
 **Deliverables:**
+
 - Best practices guide
 - Code style guide
 - Project structure recommendations
@@ -307,9 +349,11 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 ---
 
 ### Phase 8: Documentation and Resources
+
 **Goal:** Create comprehensive documentation, walkthroughs, and learning resources.
 
 #### Step 8.1: Documentation Structure
+
 - [ ] Organize all documentation into logical structure
 - [ ] Create documentation index/navigation
 - [ ] Add cross-references between documents
@@ -318,11 +362,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Create troubleshooting guide
 
 **Deliverables:**
+
 - Complete documentation structure
 - Quick reference guides
 - Troubleshooting documentation
 
 #### Step 8.2: Walkthroughs and Screencasts
+
 - [ ] Plan key workflow walkthroughs
 - [ ] Create step-by-step visual guides
 - [ ] Record screencasts for:
@@ -335,11 +381,13 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Create video transcripts
 
 **Deliverables:**
+
 - Walkthrough guides
 - Screencast recordings
 - Video transcripts
 
 #### Step 8.3: Examples and Templates
+
 - [ ] Create example projects
 - [ ] Develop reusable templates
 - [ ] Document common patterns
@@ -347,6 +395,7 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 - [ ] Build reference implementations
 
 **Deliverables:**
+
 - Example projects
 - Templates and starter kits
 - Pattern library
@@ -428,13 +477,4 @@ This project aims to build a comprehensive understanding of Strapi CMS through h
 
 ---
 
-## Progress Tracking
-
-- **Current Phase:** Not Started
-- **Current Step:** Phase 1, Step 1.1
-- **Last Updated:** [Date will be updated as work progresses]
-
----
-
-*This roadmap will be updated as the project progresses and new learnings are discovered.*
-
+_This roadmap will be updated as the project progresses and new learnings are discovered._
