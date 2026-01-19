@@ -1,336 +1,305 @@
-# Custom Controllers, Services, and Models
+# Custom Controllers, Services, and Models (Enhanced)
 
 ## Overview
 
-This guide covers how to customize and extend Strapi's default functionality by creating custom controllers, services, and extending models. Understanding Strapi's MVC-like structure is essential for building custom business logic and API endpoints.
+This guide covers customizing Strapi's default functionality by creating custom controllers, services, and extending models with lifecycle hooks. You'll learn the MVC pattern in Strapi, how to extend default functionality, and when to use each approach.
+
+**What You'll Learn:**
+- Understanding Strapi's MVC architecture
+- Creating custom controllers (extending vs replacing)
+- Building reusable services
+- Using lifecycle hooks for models
+- Entity Service API for data operations
+- Best practices and real-world patterns
 
 ---
 
-## Strapi's MVC-Like Structure
+## Understanding Strapi's MVC Architecture
+
+### MVC Pattern in Strapi
 
 Strapi follows an MVC (Model-View-Controller) pattern:
 
-- **Models**: Define data structure (Content Types)
+- **Models**: Define data structure (Content Types with schemas)
 - **Controllers**: Handle HTTP requests and responses
 - **Services**: Contain reusable business logic
 - **Routes**: Define API endpoints
 
+**Why MVC?**
+- Separation of concerns: Each component has a specific role
+- Reusability: Services can be used across multiple controllers
+- Maintainability: Changes in one layer don't affect others
+
 ### File Structure
 
 ```
-src/api/[content-type]/
+src/api/article/
 ├── content-types/
-│   └── [content-type]/
-│       ├── schema.json
-│       └── lifecycles.js
+│   └── article/
+│       ├── schema.json          # Content type definition
+│       └── lifecycles.ts        # Lifecycle hooks
 ├── controllers/
-│   └── [content-type].js
+│   └── article.ts               # Request handlers
 ├── routes/
-│   └── [content-type].js
+│   └── article.ts               # API endpoints
 └── services/
-    └── [content-type].js
+    └── article.ts               # Business logic
 ```
+
+**Learning Point:** Each Content Type has its own folder with controllers, services, routes, and lifecycle hooks. This keeps related code together.
 
 ---
 
 ## Custom Controllers
 
-Controllers handle incoming HTTP requests and send responses. They contain the logic for your API endpoints. Controllers bundle actions that handle business logic for each route within Strapi's MVC pattern.
-
-**Reference:** [Strapi Controllers Documentation](https://docs.strapi.io/cms/backend-customization/controllers)
+Controllers handle HTTP requests and send responses. They're the entry point for your API endpoints.
 
 ### Default Controller
 
-Strapi automatically generates controllers for each Content Type using the `createCoreController` factory function. The default controller provides CRUD operations:
+Strapi automatically generates controllers using `createCoreController`:
 
-```javascript
-// src/api/article/controllers/article.js
-'use strict';
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-const { createCoreController } = require('@strapi/strapi').factories;
-
-module.exports = createCoreController('api::article.article');
+export default factories.createCoreController('api::article.article');
 ```
 
-### Creating Custom Controllers
+**What it provides:**
+- `find()` - List entries with filters, pagination, sorting
+- `findOne()` - Get single entry by ID
+- `create()` - Create new entry
+- `update()` - Update existing entry
+- `delete()` - Delete entry
 
-You can extend or override the default controller to add custom logic. Strapi provides three methods for customizing controllers:
+**Learning Point:** Default controllers handle sanitization, validation, and permissions automatically. Always extend them when possible.
 
-#### Method 1: Wrapping a Core Action (Recommended)
+### Method 1: Extending Default Controllers (Recommended)
 
-This method leaves the core logic in place and adds custom logic before or after:
+Add custom logic while preserving built-in functionality.
 
-```javascript
-// src/api/article/controllers/article.js
-'use strict';
+**Use Case:** Track article views when someone reads an article.
 
-const { createCoreController } = require('@strapi/strapi').factories;
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    // Some custom logic here
-    ctx.query = { ...ctx.query, locale: 'en' };
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async findOne(ctx) {
+      // Call default findOne (handles sanitization)
+      const response = await super.findOne(ctx);
 
-    // Calling the default core action
-    const { data, meta } = await super.find(ctx);
-
-    // Some more custom logic
-    meta.date = Date.now();
-
-    return { data, meta };
-  },
-
-  async findOne(ctx) {
-    // Custom logic before
-    const { id } = ctx.params;
-
-    // Call default findOne method
-    const response = await super.findOne(ctx);
-
-    // Custom logic after
-    if (response.data) {
-      // Increment view count
-      await strapi.entityService.update('api::article.article', id, {
-        data: {
-          views: (response.data.attributes.views || 0) + 1
-        }
-      });
-    }
-
-    return response;
-  },
-
-  async create(ctx) {
-    // Custom validation before create
-    const { data } = ctx.request.body;
-
-    if (!data.title) {
-      return ctx.badRequest('Title is required');
-    }
-
-    // Call default create method
-    const response = await super.create(ctx);
-
-    // Custom logic after create
-    if (response.data) {
-      // Send notification, etc.
-      await strapi.service('api::article.article').sendNotification(response.data.id);
-    }
-
-    return response;
-  }
-}));
-```
-
-#### Method 2: Replacing a Core Action with Proper Sanitization
-
-**Important:** When replacing a core action, you MUST use sanitization methods to avoid leaking private fields or bypassing access rules. This is critical for security.
-
-```javascript
-// src/api/article/controllers/article.js
-'use strict';
-
-const { createCoreController } = require('@strapi/strapi').factories;
-
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    // validateQuery (optional) - throws error on invalid params
-    await this.validateQuery(ctx);
-
-    // sanitizeQuery (recommended) - removes invalid query params
-    const sanitizedQueryParams = await this.sanitizeQuery(ctx);
-
-    // Use service to fetch data with sanitized params
-    const { results, pagination } = await strapi.service('api::article.article').find(sanitizedQueryParams);
-
-    // sanitizeOutput - ensures user doesn't receive unauthorized data
-    const sanitizedResults = await this.sanitizeOutput(results, ctx);
-
-    return this.transformResponse(sanitizedResults, { pagination });
-  },
-
-  async findOne(ctx) {
-    await this.validateQuery(ctx);
-    const sanitizedQueryParams = await this.sanitizeQuery(ctx);
-
-    const entity = await strapi.service('api::article.article').findOne(ctx.params.id, sanitizedQueryParams);
-
-    if (!entity) {
-      return ctx.notFound('Article not found');
-    }
-
-    const sanitizedEntity = await this.sanitizeOutput(entity, ctx);
-
-    return this.transformResponse(sanitizedEntity);
-  },
-
-  async create(ctx) {
-    const { data } = ctx.request.body;
-
-    // Validate input
-    if (!data.title) {
-      return ctx.badRequest('Title is required');
-    }
-
-    // Sanitize input data
-    const sanitizedInputData = await this.sanitizeInput(data, ctx);
-
-    const entity = await strapi.service('api::article.article').create({
-      data: sanitizedInputData,
-      ...ctx.query,
-    });
-
-    const sanitizedEntity = await this.sanitizeOutput(entity, ctx);
-
-    return this.transformResponse(sanitizedEntity);
-  }
-}));
-```
-
-#### Method 3: Creating an Entirely Custom Action
-
-For actions that don't override core functionality:
-
-```javascript
-// src/api/article/controllers/article.js
-'use strict';
-
-const { createCoreController } = require('@strapi/strapi').factories;
-
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async exampleAction(ctx) {
-    try {
-      ctx.body = 'ok';
-    } catch (err) {
-      ctx.body = err;
-    }
-  }
-}));
-```
-
-### Sanitization and Validation Methods
-
-When overriding core actions, Strapi provides these methods through `createCoreController`:
-
-| Method | Parameters | Description |
-|--------|------------|-------------|
-| `validateQuery` | `ctx` | Validates request query (throws error on invalid params) - Optional |
-| `sanitizeQuery` | `ctx` | Sanitizes query params (removes invalid params) - **Strongly recommended** |
-| `sanitizeInput` | `data, ctx` | Sanitizes input data |
-| `sanitizeOutput` | `data, ctx` | Sanitizes output data (prevents leaking private fields) - **Required** |
-| `transformResponse` | `data, meta` | Transforms response to standard format |
-
-**Warning:** When querying data from another model (e.g., querying "menus" within a "restaurant" controller), use `strapi.contentAPI` methods instead:
-
-```javascript
-// src/api/restaurant/controllers/restaurant.js
-module.exports = {
-  async findCustom(ctx) {
-    const contentType = strapi.contentType('api::menu.menu');
-
-    await strapi.contentAPI.validate.query(ctx.query, contentType, { auth: ctx.state.auth });
-    const sanitizedQueryParams = await strapi.contentAPI.sanitize.query(ctx.query, contentType, { auth: ctx.state.auth });
-
-    const documents = await strapi.documents(contentType.uid).findMany(sanitizedQueryParams);
-
-    return await strapi.contentAPI.sanitize.output(documents, contentType, { auth: ctx.state.auth });
-  }
-};
-```
-
-### Custom Controller Actions
-
-Add custom actions beyond CRUD operations:
-
-```javascript
-// src/api/article/controllers/article.js
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    return super.find(ctx);
-  },
-
-  // Custom action: Get featured articles
-  async featured(ctx) {
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        featured: true,
-        publishedAt: { $notNull: true }
-      },
-      sort: { publishedAt: 'desc' },
-      limit: 10
-    });
-
-    return { data: entries };
-  },
-
-  // Custom action: Search articles
-  async search(ctx) {
-    const { query } = ctx.query;
-
-    if (!query) {
-      return ctx.badRequest('Search query is required');
-    }
-
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        $or: [
-          { title: { $contains: query } },
-          { content: { $contains: query } }
-        ]
+      // Add custom logic: Track view
+      if (response.data) {
+        const { id } = ctx.params;
+        
+        await strapi.entityService.update('api::article.article', id, {
+          data: {
+            views: (response.data.attributes.views || 0) + 1,
+          },
+        });
       }
-    });
 
-    return { data: entries };
-  },
+      return response;
+    },
 
-  // Custom action: Get articles by author
-  async byAuthor(ctx) {
-    const { authorId } = ctx.params;
+    async find(ctx) {
+      // Add default filter: only published articles
+      ctx.query = {
+        ...ctx.query,
+        filters: {
+          ...ctx.query.filters,
+          publishedAt: { $notNull: true },
+        },
+      };
 
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        author: authorId
-      },
-      populate: ['author', 'categories']
-    });
+      // Call default find
+      const { data, meta } = await super.find(ctx);
 
-    return { data: entries };
-  }
-}));
+      // Transform response: add computed fields
+      const transformedData = data.map((item) => ({
+        ...item,
+        attributes: {
+          ...item.attributes,
+          excerpt: item.attributes.content?.substring(0, 150) || '',
+          readingTime: Math.ceil(
+            (item.attributes.content?.split(/\s+/).length || 0) / 200
+          ),
+        },
+      }));
+
+      return { data: transformedData, meta };
+    },
+
+    async create(ctx) {
+      const { data } = ctx.request.body;
+
+      // Custom validation
+      if (!data.title || data.title.length < 10) {
+        return ctx.badRequest('Title must be at least 10 characters');
+      }
+
+      // Call default create (handles sanitization)
+      const response = await super.create(ctx);
+
+      // Custom logic after creation
+      if (response.data) {
+        // Send notification
+        await strapi.service('api::article.article').sendNotification(
+          response.data.id
+        );
+      }
+
+      return response;
+    },
+  })
+);
 ```
+
+**Learning Points:**
+- Use `super.methodName()` to call parent methods
+- Add logic before or after default behavior
+- Sanitization and validation are handled automatically
+- Transform responses to add computed fields
+
+### Method 2: Replacing Core Actions (Advanced)
+
+When you need complete control, replace actions but **always use sanitization methods**.
+
+**Use Case:** Custom filtering based on user roles.
+
+```typescript
+import { factories } from '@strapi/strapi';
+
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      // Validate query parameters
+      await this.validateQuery(ctx);
+
+      // Sanitize query (removes invalid params)
+      const sanitizedQuery = await this.sanitizeQuery(ctx);
+
+      // Custom filtering logic
+      const customFilters = {
+        ...sanitizedQuery.filters,
+        publishedAt: { $notNull: true },
+        // Role-based filtering
+        ...(ctx.state.user?.role?.name === 'Author' && {
+          author: { id: ctx.state.user.id },
+        }),
+      };
+
+      // Fetch data using service
+      const { results, pagination } = await strapi
+        .service('api::article.article')
+        .find({
+          ...sanitizedQuery,
+          filters: customFilters,
+        });
+
+      // Sanitize output (prevents data leaks)
+      const sanitizedResults = await this.sanitizeOutput(results, ctx);
+
+      // Transform response
+      return this.transformResponse(sanitizedResults, { pagination });
+    },
+  })
+);
+```
+
+**Security Note:** Always use sanitization methods:
+- `validateQuery()` - Validates query params (throws on invalid)
+- `sanitizeQuery()` - Removes invalid query params
+- `sanitizeInput()` - Sanitizes input data
+- `sanitizeOutput()` - Prevents leaking private fields (required)
+- `transformResponse()` - Formats response
+
+### Method 3: Custom Actions
+
+Add actions beyond CRUD operations.
+
+```typescript
+import { factories } from '@strapi/strapi';
+
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    // Custom action: Get featured articles
+    async featured(ctx) {
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            featured: true,
+            publishedAt: { $notNull: true },
+          },
+          sort: { publishedAt: 'desc' },
+          limit: 10,
+          populate: ['author', 'categories'],
+        }
+      );
+
+      return { data: entries };
+    },
+
+    // Custom action: Search articles
+    async search(ctx) {
+      const { query } = ctx.query;
+
+      if (!query) {
+        return ctx.badRequest('Search query is required');
+      }
+
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            $or: [
+              { title: { $contains: query } },
+              { content: { $contains: query } },
+            ],
+            publishedAt: { $notNull: true },
+          },
+        }
+      );
+
+      return { data: entries };
+    },
+  })
+);
+```
+
+**Learning Point:** Custom actions don't override core methods, so they don't need sanitization. They're perfect for specialized endpoints.
 
 ### Controller Context (ctx)
 
-The `ctx` (context) object is central to Strapi's request handling, built on Koa framework. It contains request, state, and response information:
+The `ctx` object contains request and response information:
 
-**Reference:** [Strapi Requests and Responses Documentation](https://docs.strapi.io/cms/backend-customization/requests-responses)
-
-```javascript
+```typescript
 {
-  // Request information
+  // Request data
   request: {
-    body: {},           // Parsed request body
-    query: {},          // Query parameters object
-    params: {},         // Route parameters
-    headers: {},        // Request headers object
-    method: 'GET',      // HTTP method (GET, POST, PUT, DELETE, etc.)
-    url: '/api/articles', // Full URL of the request
-    path: '/api/articles' // URL path
+    body: {},        // Request body (POST/PUT data)
+    query: {},       // Query parameters (?key=value)
+    params: {},      // Route parameters (:id)
+    headers: {},     // HTTP headers
+    method: 'GET',   // HTTP method
   },
   
-  // Response information
+  // Response data
   response: {
-    body: {},           // Response body (automatically sent)
-    status: 200,        // HTTP status code
-    headers: {},        // Response headers
-    type: 'application/json' // Content-Type
+    body: {},        // Response body
+    status: 200,     // HTTP status code
   },
   
   // Application state
   state: {
-    user: {},           // Authenticated user (if authenticated)
-    auth: {},           // Authentication information (strategy, credentials)
-    route: {}           // Current route information (method, path, handler)
+    user: {},        // Authenticated user
+    auth: {},        // Authentication info
   },
   
   // Helper methods
@@ -338,214 +307,243 @@ The `ctx` (context) object is central to Strapi's request handling, built on Koa
   notFound(message),
   unauthorized(message),
   forbidden(message),
-  throw(status, message)
 }
 ```
 
-### Accessing Request Context Anywhere
+**Accessing Context Outside Controllers:**
 
-You can access the current request context from anywhere in your code (e.g., in lifecycle functions or services) using `strapi.requestContext.get()`:
-
-```javascript
-// In a service or lifecycle function
+```typescript
+// In services or lifecycle hooks
 const ctx = strapi.requestContext.get();
-console.log(ctx.state.user);
-console.log(ctx.request.method);
+const user = ctx.state.user;
 ```
 
 ---
 
 ## Custom Services
 
-Services contain reusable business logic that can be shared across controllers and other parts of your application.
+Services contain reusable business logic. They're shared across controllers and other parts of your application.
 
 ### Default Service
 
-Strapi automatically generates services for each Content Type:
+Strapi generates services automatically:
 
-```javascript
-// src/api/article/services/article.js
-'use strict';
+```typescript
+// src/api/article/services/article.ts
+import { factories } from '@strapi/strapi';
 
-const { createCoreService } = require('@strapi/strapi').factories;
-
-module.exports = createCoreService('api::article.article');
+export default factories.createCoreService('api::article.article');
 ```
 
-### Creating Custom Services
+**What it provides:**
+- `find()` - Query entries
+- `findOne()` - Get single entry
+- `create()` - Create entry
+- `update()` - Update entry
+- `delete()` - Delete entry
 
-#### Method 1: Extend Default Service
+### Extending Services
 
-```javascript
-// src/api/article/services/article.js
-'use strict';
+Add custom methods to services:
 
-const { createCoreService } = require('@strapi/strapi').factories;
+```typescript
+// src/api/article/services/article.ts
+import { factories } from '@strapi/strapi';
 
-module.exports = createCoreService('api::article.article', ({ strapi }) => ({
-  async findPublished() {
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        publishedAt: { $notNull: true }
-      },
-      sort: { publishedAt: 'desc' }
-    });
-
-    return entries;
-  },
-
-  async findByCategory(categoryId) {
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        categories: {
-          id: categoryId
-        }
-      },
-      populate: ['author', 'categories']
-    });
-
-    return entries;
-  },
-
-  async incrementViews(articleId) {
-    const article = await strapi.entityService.findOne('api::article.article', articleId);
-    
-    if (article) {
-      await strapi.entityService.update('api::article.article', articleId, {
-        data: {
-          views: (article.views || 0) + 1
-        }
+export default factories.createCoreService(
+  'api::article.article',
+  ({ strapi }) => ({
+    /**
+     * Find published articles
+     */
+    async findPublished() {
+      return await strapi.entityService.findMany('api::article.article', {
+        filters: {
+          publishedAt: { $notNull: true },
+        },
+        sort: { publishedAt: 'desc' },
       });
-    }
-  },
+    },
 
-  async sendNotification(articleId) {
-    const article = await strapi.entityService.findOne('api::article.article', articleId, {
-      populate: ['author']
-    });
-
-    if (article && article.author) {
-      // Send email notification
-      await strapi.plugins['email'].services.email.send({
-        to: article.author.email,
-        subject: 'Article Published',
-        text: `Your article "${article.title}" has been published.`
+    /**
+     * Find articles by category
+     */
+    async findByCategory(categoryId: number) {
+      return await strapi.entityService.findMany('api::article.article', {
+        filters: {
+          categories: { id: categoryId },
+        },
+        populate: ['author', 'categories'],
       });
-    }
-  },
+    },
 
-  async generateSlug(title) {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-  }
-}));
-```
+    /**
+     * Increment article views
+     */
+    async incrementViews(articleId: number) {
+      const article = await strapi.entityService.findOne(
+        'api::article.article',
+        articleId
+      );
 
-#### Method 2: Standalone Service
-
-```javascript
-// src/api/article/services/article.js
-'use strict';
-
-module.exports = {
-  async findPublished() {
-    return await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        publishedAt: { $notNull: true }
+      if (article) {
+        await strapi.entityService.update('api::article.article', articleId, {
+          data: {
+            views: (article.views || 0) + 1,
+          },
+        });
       }
-    });
-  },
+    },
 
-  async calculateReadingTime(content) {
-    const wordsPerMinute = 200;
-    const wordCount = content.split(/\s+/).length;
-    const readingTime = Math.ceil(wordCount / wordsPerMinute);
-    return readingTime;
-  },
+    /**
+     * Send notification when article is published
+     */
+    async sendNotification(articleId: number) {
+      const article = await strapi.entityService.findOne(
+        'api::article.article',
+        articleId,
+        { populate: ['author'] }
+      );
 
-  async validateArticle(data) {
-    const errors = [];
+      if (article?.author) {
+        // Send email notification
+        await strapi.plugins['email'].services.email.send({
+          to: article.author.email,
+          subject: 'Article Published',
+          text: `Your article "${article.title}" has been published.`,
+        });
+      }
+    },
 
-    if (!data.title || data.title.length < 10) {
-      errors.push('Title must be at least 10 characters');
-    }
+    /**
+     * Generate URL-friendly slug from title
+     */
+    generateSlug(title: string): string {
+      return title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    },
 
-    if (!data.content || data.content.length < 100) {
-      errors.push('Content must be at least 100 characters');
-    }
+    /**
+     * Calculate reading time in minutes
+     */
+    calculateReadingTime(content: string): number {
+      const wordsPerMinute = 200;
+      const wordCount = content.split(/\s+/).length;
+      return Math.ceil(wordCount / wordsPerMinute);
+    },
 
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  }
-};
+    /**
+     * Validate article data
+     */
+    validateArticle(data: any): { isValid: boolean; errors: string[] } {
+      const errors: string[] = [];
+
+      if (!data.title || data.title.length < 10) {
+        errors.push('Title must be at least 10 characters');
+      }
+
+      if (!data.content || data.content.length < 100) {
+        errors.push('Content must be at least 100 characters');
+      }
+
+      return {
+        isValid: errors.length === 0,
+        errors,
+      };
+    },
+  })
+);
 ```
+
+**Learning Points:**
+- Services encapsulate business logic
+- Methods are reusable across controllers
+- Use Entity Service API for data operations
+- Keep services focused on single responsibility
 
 ### Using Services in Controllers
 
-```javascript
-// src/api/article/controllers/article.js
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    // Use service method
-    const publishedArticles = await strapi.service('api::article.article').findPublished();
-    return { data: publishedArticles };
-  },
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-  async create(ctx) {
-    const { data } = ctx.request.body;
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      // Use service method
+      const publishedArticles = await strapi
+        .service('api::article.article')
+        .findPublished();
+      
+      return { data: publishedArticles };
+    },
 
-    // Use service for validation
-    const validation = await strapi.service('api::article.article').validateArticle(data);
-    
-    if (!validation.isValid) {
-      return ctx.badRequest('Validation failed', { errors: validation.errors });
-    }
+    async create(ctx) {
+      const { data } = ctx.request.body;
 
-    // Generate slug using service
-    data.slug = await strapi.service('api::article.article').generateSlug(data.title);
+      // Validate using service
+      const validation = await strapi
+        .service('api::article.article')
+        .validateArticle(data);
 
-    // Create entry
-    const response = await super.create(ctx);
+      if (!validation.isValid) {
+        return ctx.badRequest('Validation failed', {
+          errors: validation.errors,
+        });
+      }
 
-    // Send notification using service
-    await strapi.service('api::article.article').sendNotification(response.data.id);
+      // Generate slug using service
+      data.slug = strapi
+        .service('api::article.article')
+        .generateSlug(data.title);
 
-    return response;
-  }
-}));
+      // Create entry
+      const response = await super.create(ctx);
+
+      // Send notification using service
+      if (response.data) {
+        await strapi
+          .service('api::article.article')
+          .sendNotification(response.data.id);
+      }
+
+      return response;
+    },
+  })
+);
 ```
+
+**Learning Point:** Controllers should be thin - delegate business logic to services. This keeps code organized and testable.
 
 ---
 
-## Extending Models
+## Lifecycle Hooks
 
-Models in Strapi are defined by Content Type schemas. You can extend model functionality using lifecycle hooks.
+Lifecycle hooks execute custom logic at specific points in the content lifecycle.
 
-### Lifecycle Hooks
+### Available Hooks
 
-Lifecycle hooks allow you to execute custom logic at specific points in the content lifecycle.
+- `beforeCreate` - Before creating an entry
+- `afterCreate` - After creating an entry
+- `beforeUpdate` - Before updating an entry
+- `afterUpdate` - After updating an entry
+- `beforeDelete` - Before deleting an entry
+- `afterDelete` - After deleting an entry
 
-#### Available Hooks
+### Lifecycle Hook Example
 
-- `beforeCreate`: Before creating an entry
-- `afterCreate`: After creating an entry
-- `beforeUpdate`: Before updating an entry
-- `afterUpdate`: After updating an entry
-- `beforeDelete`: Before deleting an entry
-- `afterDelete`: After deleting an entry
+```typescript
+// src/api/article/content-types/article/lifecycles.ts
+import type { Core } from '@strapi/strapi';
 
-#### Lifecycle Hook Example
-
-```javascript
-// src/api/article/content-types/article/lifecycles.js
-'use strict';
-
-module.exports = {
-  async beforeCreate(event) {
+export default {
+  /**
+   * Before creating an article
+   */
+  async beforeCreate(event: any) {
     const { data } = event.params;
 
     // Auto-generate slug if not provided
@@ -556,37 +554,49 @@ module.exports = {
         .replace(/(^-|-$)/g, '');
     }
 
-    // Set default published date
+    // Set default published date if published flag is true
     if (!data.publishedAt && data.published) {
       data.publishedAt = new Date();
     }
   },
 
-  async afterCreate(event) {
+  /**
+   * After creating an article
+   */
+  async afterCreate(event: any) {
     const { result } = event;
 
-    // Send notification after creation
+    // Send notification
     await strapi.service('api::article.article').sendNotification(result.id);
 
     // Log creation
     strapi.log.info(`Article created: ${result.id}`);
   },
 
-  async beforeUpdate(event) {
+  /**
+   * Before updating an article
+   */
+  async beforeUpdate(event: any) {
     const { data, where } = event.params;
 
-    // Prevent updating published articles
-    const existing = await strapi.entityService.findOne('api::article.article', where.id);
-    
-    if (existing.publishedAt && !data.forceUpdate) {
-      throw new Error('Cannot update published article');
+    // Prevent updating published articles (unless force flag is set)
+    const existing = await strapi.entityService.findOne(
+      'api::article.article',
+      where.id
+    );
+
+    if (existing?.publishedAt && !data.forceUpdate) {
+      throw new Error('Cannot update published article without force flag');
     }
 
     // Update modified date
     data.updatedAt = new Date();
   },
 
-  async afterUpdate(event) {
+  /**
+   * After updating an article
+   */
+  async afterUpdate(event: any) {
     const { result } = event;
 
     // Clear cache
@@ -596,69 +606,71 @@ module.exports = {
     strapi.log.info(`Article updated: ${result.id}`);
   },
 
-  async beforeDelete(event) {
+  /**
+   * Before deleting an article
+   */
+  async beforeDelete(event: any) {
     const { where } = event.params;
-    const article = await strapi.entityService.findOne('api::article.article', where.id);
+    const article = await strapi.entityService.findOne(
+      'api::article.article',
+      where.id
+    );
 
     // Prevent deleting published articles
-    if (article.publishedAt) {
+    if (article?.publishedAt) {
       throw new Error('Cannot delete published article');
     }
   },
 
-  async afterDelete(event) {
+  /**
+   * After deleting an article
+   */
+  async afterDelete(event: any) {
     const { result } = event;
 
     // Clean up related data
     await strapi.entityService.deleteMany('api::comment.comment', {
       filters: {
-        article: result.id
-      }
+        article: result.id,
+      },
     });
 
     // Log deletion
     strapi.log.info(`Article deleted: ${result.id}`);
-  }
+  },
 };
 ```
 
-### Event Object Structure
+**Event Object Structure:**
 
-```javascript
+```typescript
 {
   params: {
     data: {},      // Data being created/updated
-    where: {},     // Where clause for queries
+    where: {},     // Where clause (contains id for findOne/update/delete)
     select: [],    // Fields to select
     populate: {}   // Relations to populate
   },
-  result: {},      // Result of the operation
+  result: {},      // Result of the operation (available in after hooks)
   state: {}         // Custom state
 }
 ```
+
+**Learning Points:**
+- Use `beforeCreate`/`beforeUpdate` for validation and data transformation
+- Use `afterCreate`/`afterUpdate` for side effects (notifications, logging)
+- Throw errors in `before` hooks to prevent operations
+- Keep hooks lightweight (avoid heavy operations)
 
 ---
 
 ## Custom Routes
 
-Routes define the API endpoints for your Content Types. They connect HTTP requests to controller actions.
+Routes connect HTTP requests to controller actions.
 
-**Reference:** [Strapi Routes Documentation](https://docs.strapi.io/cms/backend-customization/routes)
+### Core Routes
 
-### Core Routes with createCoreRouter
-
-Strapi 5 uses the `createCoreRouter` factory function to generate core routes. This is the recommended way to define routes for Content Types.
-
-#### Basic Core Router
-
-```javascript
-// src/api/article/routes/article.js
-'use strict';
-
-const { createCoreRouter } = require('@strapi/strapi').factories;
-
-module.exports = createCoreRouter('api::article.article');
-```
+Strapi 5 uses `createCoreRouter` to generate standard CRUD routes:
 
 ```typescript
 // src/api/article/routes/article.ts
@@ -667,53 +679,26 @@ import { factories } from '@strapi/strapi';
 export default factories.createCoreRouter('api::article.article');
 ```
 
-#### Core Router with Configuration
-
-You can configure which routes to include/exclude and set policies, middlewares, and authentication:
-
-```javascript
-// src/api/article/routes/article.js
-'use strict';
-
-const { createCoreRouter } = require('@strapi/strapi').factories;
-
-module.exports = createCoreRouter('api::article.article', {
-  prefix: '',
-  only: ['find', 'findOne'],  // Only include these routes
-  except: [],                  // Exclude these routes (takes precedence over only)
-  config: {
-    find: {
-      auth: false,             // Disable authentication for find route
-      policies: [],
-      middlewares: [],
-    },
-    findOne: {
-      auth: true,
-      policies: [],
-      middlewares: [],
-    },
-    create: {},
-    update: {},
-    delete: {},
-  },
-});
-```
+**With Configuration:**
 
 ```typescript
-// src/api/article/routes/article.ts
 import { factories } from '@strapi/strapi';
 
 export default factories.createCoreRouter('api::article.article', {
   prefix: '',
-  only: ['find', 'findOne'],
-  except: [],
+  only: ['find', 'findOne'],  // Only include these routes
+  except: [],                  // Exclude these routes
   config: {
     find: {
-      auth: false,
+      auth: false,             // Public access
       policies: [],
       middlewares: [],
     },
-    findOne: {},
+    findOne: {
+      auth: true,              // Requires authentication
+      policies: [],
+      middlewares: [],
+    },
     create: {},
     update: {},
     delete: {},
@@ -723,9 +708,7 @@ export default factories.createCoreRouter('api::article.article', {
 
 ### Custom Routes
 
-For routes that go beyond the standard CRUD operations, create a separate route file. Custom routes use a configuration object with `type` and `routes` properties.
-
-#### TypeScript Format (Recommended)
+For endpoints beyond CRUD:
 
 ```typescript
 // src/api/article/routes/01-custom-article.ts
@@ -753,15 +736,6 @@ const config: Core.RouterConfig = {
       },
     },
     {
-      method: 'GET',
-      path: '/articles/author/:authorId',
-      handler: 'api::article.article.byAuthor',
-      config: {
-        policies: [],
-        middlewares: [],
-      },
-    },
-    {
       method: 'POST',
       path: '/articles/:id/publish',
       handler: 'api::article.article.publish',
@@ -776,62 +750,104 @@ const config: Core.RouterConfig = {
 export default config;
 ```
 
-#### JavaScript Format
+**Handler Format:**
+- Full format: `'api::article.article.featured'`
+- Short format: `'article.featured'` (resolves to full format)
 
-```javascript
-// src/api/article/routes/01-custom-article.js
-'use strict';
+**Route Parameters:**
+- `:id` - Access via `ctx.params.id`
+- `:authorId` - Access via `ctx.params.authorId`
 
-const config = {
-  type: 'content-api',
-  routes: [
-    {
-      method: 'GET',
-      path: '/articles/featured',
-      handler: 'api::article.article.featured',
-      config: {
-        policies: [],
-        middlewares: [],
-      },
-    },
-    {
-      method: 'GET',
-      path: '/articles/search',
-      handler: 'api::article.article.search',
-      config: {
-        policies: [],
-        middlewares: [],
-      },
-    },
-    {
-      method: 'GET',
-      path: '/articles/author/:authorId',
-      handler: 'api::article.article.byAuthor',
-      config: {
-        policies: [],
-        middlewares: [],
-      },
-    },
-    {
-      method: 'POST',
-      path: '/articles/:id/publish',
-      handler: 'api::article.article.publish',
-      config: {
-        policies: ['plugin::users-permissions.isAuthenticated'],
-        middlewares: [],
-      },
-    },
-  ],
-};
+---
 
-module.exports = config;
+## Entity Service API
+
+Entity Service provides programmatic access to your content.
+
+### Common Methods
+
+```typescript
+// Find many entries
+const entries = await strapi.entityService.findMany('api::article.article', {
+  filters: { publishedAt: { $notNull: true } },
+  sort: { publishedAt: 'desc' },
+  populate: ['author', 'categories'],
+  limit: 10,
+  offset: 0,
+});
+
+// Find one entry
+const entry = await strapi.entityService.findOne(
+  'api::article.article',
+  id,
+  { populate: ['author'] }
+);
+
+// Create entry
+const newEntry = await strapi.entityService.create('api::article.article', {
+  data: {
+    title: 'New Article',
+    content: 'Article content',
+  },
+});
+
+// Update entry
+const updatedEntry = await strapi.entityService.update(
+  'api::article.article',
+  id,
+  {
+    data: {
+      title: 'Updated Title',
+    },
+  }
+);
+
+// Delete entry
+const deletedEntry = await strapi.entityService.delete(
+  'api::article.article',
+  id
+);
 ```
 
-**Note:** Route files are loaded in alphabetical order. Use prefixes like `01-`, `02-` to control the loading order if needed.
+**Learning Points:**
+- Use Entity Service in services (not controllers directly)
+- Filters support complex queries (`$or`, `$and`, `$contains`, etc.)
+- Populate relations to include related data
+- Always handle errors when using Entity Service
 
-#### Corresponding Controller Method
+---
 
-The controller method referenced in the route handler must be defined in your controller:
+## Complete Example
+
+Here's a complete example combining controllers, services, and routes:
+
+**Service:**
+
+```typescript
+// src/api/article/services/article.ts
+import { factories } from '@strapi/strapi';
+
+export default factories.createCoreService(
+  'api::article.article',
+  ({ strapi }) => ({
+    async findPopular(limit = 10) {
+      return await strapi.entityService.findMany('api::article.article', {
+        filters: {
+          publishedAt: { $notNull: true },
+        },
+        sort: { views: 'desc' },
+        limit,
+      });
+    },
+
+    generateSlug(title: string): string {
+      return title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    },
+  })
+);
+```
+
+**Controller:**
 
 ```typescript
 // src/api/article/controllers/article.ts
@@ -840,162 +856,39 @@ import { factories } from '@strapi/strapi';
 export default factories.createCoreController(
   'api::article.article',
   ({ strapi }) => ({
-    async featured(ctx) {
-      const entries = await strapi.entityService.findMany('api::article.article', {
-        filters: {
-          featured: true,
-          publishedAt: { $notNull: true },
-        },
-        sort: { publishedAt: 'desc' },
-        limit: 10,
-      });
-
-      return { data: entries };
-    },
-
-    async search(ctx) {
-      const { query } = ctx.query;
-
-      if (!query) {
-        return ctx.badRequest('Search query is required');
-      }
-
-      const entries = await strapi.entityService.findMany('api::article.article', {
-        filters: {
-          $or: [
-            { title: { $contains: query } },
-            { content: { $contains: query } },
-          ],
-        },
-      });
-
+    async popular(ctx) {
+      const entries = await strapi
+        .service('api::article.article')
+        .findPopular(10);
+      
       return { data: entries };
     },
   })
 );
 ```
 
-### Route Configuration Options
-
-#### createCoreRouter Options
-
-```javascript
-{
-  prefix: '',                    // Route prefix (e.g., '/api/v1')
-  only: ['find', 'findOne'],     // Only include these routes
-  except: ['delete'],            // Exclude these routes (takes precedence)
-  config: {
-    find: {
-      auth: false,               // Disable authentication (default: true)
-      policies: [],              // Array of policy names
-      middlewares: [],           // Array of middleware names
-    },
-    findOne: {},
-    create: {},
-    update: {},
-    delete: {},
-  }
-}
-```
-
-#### Custom Route Configuration Object
+**Routes:**
 
 ```typescript
+// src/api/article/routes/01-custom-article.ts
+import type { Core } from '@strapi/strapi';
+
 const config: Core.RouterConfig = {
-  type: 'content-api',  // Route type: 'content-api' or 'admin'
+  type: 'content-api',
   routes: [
-    // Array of route objects
+    {
+      method: 'GET',
+      path: '/articles/popular',
+      handler: 'api::article.article.popular',
+      config: {
+        policies: [],
+        middlewares: [],
+      },
+    },
   ],
 };
-```
 
-#### Route Object Structure
-
-```javascript
-{
-  method: 'GET|POST|PUT|DELETE|PATCH',  // HTTP method
-  path: '/custom-path',                  // Route path (supports parameters like :id)
-  handler: 'api::article.article.action', // Controller handler (full format)
-  config: {
-    policies: ['policy-name'],          // Authorization policies (array)
-    middlewares: ['middleware-name'],   // Middleware functions (array)
-    auth: false,                        // Disable authentication (default: true)
-  }
-}
-```
-
-### Handler Format
-
-The handler string follows the pattern: `'api::content-type-name.controller-name.action-name'`
-
-- **For API controllers**: `'api::article.article.find'` refers to `src/api/article/controllers/article.js` → `find` action
-- **For plugin controllers**: `'plugin::plugin-name.controller.action'`
-- **Short format** (legacy, still supported): `'article.find'` (resolves to `api::article.article.find`)
-
-### Route Parameters
-
-Routes support dynamic parameters using `:paramName`:
-
-```javascript
-{
-  method: 'GET',
-  path: '/articles/:id',                    // Access via ctx.params.id
-  handler: 'api::article.article.findOne',
-}
-
-{
-  method: 'GET',
-  path: '/articles/:id/comments/:commentId', // Access via ctx.params.id and ctx.params.commentId
-  handler: 'api::article.article.getComment',
-}
-
-{
-  method: 'GET',
-  path: '/articles/:category([a-z]+)',      // With regex pattern
-  handler: 'api::article.article.findByCategory',
-}
-```
-
----
-
-## Entity Service API
-
-The Entity Service API provides a programmatic way to interact with your content.
-
-### Common Methods
-
-```javascript
-// Find many entries
-const entries = await strapi.entityService.findMany('api::article.article', {
-  filters: { published: true },
-  sort: { publishedAt: 'desc' },
-  populate: ['author', 'categories'],
-  limit: 10,
-  offset: 0
-});
-
-// Find one entry
-const entry = await strapi.entityService.findOne('api::article.article', id, {
-  populate: ['author']
-});
-
-// Create entry
-const newEntry = await strapi.entityService.create('api::article.article', {
-  data: {
-    title: 'New Article',
-    content: 'Article content'
-  }
-});
-
-// Update entry
-const updatedEntry = await strapi.entityService.update('api::article.article', id, {
-  data: {
-    title: 'Updated Title'
-  }
-});
-
-// Delete entry
-const deletedEntry = await strapi.entityService.delete('api::article.article', id);
+export default config;
 ```
 
 ---
@@ -1005,115 +898,59 @@ const deletedEntry = await strapi.entityService.delete('api::article.article', i
 ### Controllers
 
 1. **Keep Controllers Thin**: Move business logic to services
-2. **Use Default Controllers**: Extend rather than replace when possible
-3. **Error Handling**: Always handle errors properly
-4. **Validation**: Validate input data
-5. **Response Format**: Maintain consistent response format
+2. **Extend Default Controllers**: Use `super.methodName()` when possible
+3. **Validate Inputs**: Always validate before processing
+4. **Handle Errors**: Use try-catch and return appropriate status codes
+5. **Use Sanitization**: Always sanitize when replacing core actions
 
 ### Services
 
-1. **Reusability**: Make services reusable across controllers
-2. **Single Responsibility**: Each service method should do one thing
-3. **Error Handling**: Handle errors and throw appropriate exceptions
-4. **Documentation**: Document service methods
+1. **Single Responsibility**: Each method should do one thing
+2. **Reusability**: Make services reusable across controllers
+3. **Error Handling**: Throw meaningful errors
+4. **Documentation**: Comment complex logic
+5. **Use Entity Service**: Access data through Entity Service API
 
 ### Lifecycle Hooks
 
-1. **Performance**: Keep hooks lightweight
-2. **Error Handling**: Handle errors to prevent data corruption
-3. **Idempotency**: Make hooks idempotent when possible
-4. **Logging**: Log important operations
+1. **Keep Hooks Lightweight**: Avoid heavy operations
+2. **Handle Errors**: Prevent data corruption
+3. **Use for Side Effects**: Notifications, logging, cleanup
+4. **Validate in Before Hooks**: Prevent invalid data
 
 ### Routes
 
 1. **RESTful Design**: Follow REST conventions
-2. **Security**: Apply appropriate policies
-3. **Versioning**: Consider API versioning for breaking changes
-4. **Documentation**: Document custom routes
+2. **Apply Policies**: Protect sensitive routes
+3. **Document Routes**: Comment what each route does
+4. **Use TypeScript**: Type your route configurations
 
 ---
 
-## Examples
+## Key Takeaways
 
-### Complete Example: Article API with Custom Features
+- **Controllers**: Handle HTTP requests/responses, keep them thin
+- **Services**: Contain business logic, make them reusable
+- **Lifecycle Hooks**: Execute logic at specific points in content lifecycle
+- **Routes**: Connect HTTP requests to controller actions
+- **Entity Service**: Programmatic access to content
 
-**Service:**
-```javascript
-// src/api/article/services/article.js
-module.exports = createCoreService('api::article.article', ({ strapi }) => ({
-  async findPopular(limit = 10) {
-    return await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        publishedAt: { $notNull: true }
-      },
-      sort: { views: 'desc' },
-      limit
-    });
-  },
+### Important Reminders
 
-  async generateSlug(title) {
-    return title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-  }
-}));
-```
-
-**Controller:**
-```javascript
-// src/api/article/controllers/article.js
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async popular(ctx) {
-    const entries = await strapi.service('api::article.article').findPopular();
-    return { data: entries };
-  }
-}));
-```
-
-**Routes:**
-```javascript
-// src/api/article/routes/article.js
-module.exports = {
-  routes: [
-    {
-      method: 'GET',
-      path: '/articles/popular',
-      handler: 'article.popular',
-    }
-  ]
-};
-```
+- Always extend default controllers when possible (automatic sanitization)
+- Use sanitization methods when replacing core actions
+- Keep business logic in services, not controllers
+- Use lifecycle hooks for side effects and validation
+- Follow REST conventions for routes
+- Handle errors properly with meaningful messages
 
 ---
 
 ## References
 
 - [Strapi Backend Customization](https://docs.strapi.io/cms/backend-customization)
-- [Strapi Controllers Documentation](https://docs.strapi.io/cms/backend-customization/controllers)
-- [Strapi Services Documentation](https://docs.strapi.io/cms/backend-customization/services)
-- [Strapi Routes Documentation](https://docs.strapi.io/cms/backend-customization/routes)
-- [Strapi Policies Documentation](https://docs.strapi.io/cms/backend-customization/policies)
-- [Strapi Models Documentation](https://docs.strapi.io/cms/backend-customization/models)
-- [Strapi Requests and Responses](https://docs.strapi.io/cms/backend-customization/requests-responses)
-- [Strapi Entity Service API](https://docs.strapi.io/cms/api/entity-service)
-
----
-
-## Notes
-
-### Key Takeaways
-
-- Controllers handle HTTP requests and responses
-- Services contain reusable business logic
-- Lifecycle hooks execute at specific points in content lifecycle
-- Routes define API endpoints
-- Entity Service API provides programmatic access to content
-
-### Important Reminders
-
-- **Always extend default controllers when possible** - They handle sanitization automatically
-- **Use sanitization methods when replacing core actions** - Use `validateQuery`, `sanitizeQuery`, and `sanitizeOutput` to prevent security vulnerabilities
-- **Keep business logic in services, not controllers** - Controllers should be thin and delegate to services
-- **Use lifecycle hooks for data validation and side effects** - Execute logic at specific points in the content lifecycle
-- **Follow REST conventions for routes** - Maintain consistency with standard REST patterns
-- **Handle errors properly in all custom code** - Provide meaningful error messages and proper status codes
-- **Access request context safely** - Use `strapi.requestContext.get()` when needed outside of controllers
-
+- [Strapi Controllers](https://docs.strapi.io/cms/backend-customization/controllers)
+- [Strapi Services](https://docs.strapi.io/cms/backend-customization/services)
+- [Strapi Routes](https://docs.strapi.io/cms/backend-customization/routes)
+- [Strapi Models](https://docs.strapi.io/cms/backend-customization/models)
+- [Entity Service API](https://docs.strapi.io/cms/api/entity-service)

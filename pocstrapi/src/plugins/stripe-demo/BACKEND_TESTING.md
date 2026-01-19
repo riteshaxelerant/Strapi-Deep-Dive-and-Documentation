@@ -16,15 +16,20 @@ This document provides testing instructions for the Stripe Demo plugin backend f
 2. **Service**: `server/src/services/service.ts`
    - `getStripeKey()`: Retrieves Stripe key from plugin store
    - `saveStripeKey(stripeKey)`: Saves Stripe key to plugin store
+   - `createPaymentIntent(amount)`: Creates a Stripe payment intent (with error handling)
 
 3. **Controller**: `server/src/controllers/controller.ts`
    - `getConfig(ctx)`: GET endpoint to retrieve configuration
    - `saveConfig(ctx)`: PUT endpoint to save configuration
+   - `createPaymentIntent(ctx)`: POST endpoint to create payment intent
 
-4. **Routes**: `server/src/routes/admin/index.ts`
-   - `GET /strapi-plugin/stripe-demo/config`: Get configuration
-   - `PUT /strapi-plugin/stripe-demo/config`: Save configuration
-   - Both routes protected by `is-super-admin` policy
+4. **Routes**: 
+   - **Admin routes** (`server/src/routes/admin/index.ts`):
+     - `GET /stripe-demo/config`: Get configuration
+     - `PUT /stripe-demo/config`: Save configuration
+     - Both routes protected by `is-super-admin` policy
+   - **Content API routes** (`server/src/routes/content-api/index.ts`):
+     - `POST /api/stripe-demo/pay`: Create payment intent (public endpoint)
 
 ## Testing Instructions
 
@@ -147,6 +152,118 @@ curl -X PUT http://localhost:1337/strapi-plugin/stripe-demo/config \
 
 **Status Code:** 400
 
+#### Test 6: Create Payment Intent (Valid Stripe Key)
+
+**Prerequisites:** You must have a valid Stripe API key configured (use Test 2 to save it first).
+
+```bash
+curl -X POST http://localhost:1337/api/stripe-demo/pay \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 10.50}'
+```
+
+**Expected Response:**
+```json
+{
+  "paymentIntent": {
+    "id": "pi_xxxxx",
+    "object": "payment_intent",
+    "amount": 1050,
+    "currency": "usd",
+    "status": "requires_payment_method",
+    ...
+  }
+}
+```
+
+**Status Code:** 200
+
+**Note:** Replace the Stripe key with a valid test key from your Stripe dashboard. Use `sk_test_...` for testing.
+
+#### Test 7: Create Payment Intent - Missing Amount
+
+```bash
+curl -X POST http://localhost:1337/api/stripe-demo/pay \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+**Expected Response:**
+```json
+{
+  "error": {
+    "status": 400,
+    "message": "Amount is required and must be a positive number"
+  }
+}
+```
+
+**Status Code:** 400
+
+#### Test 8: Create Payment Intent - Invalid Amount
+
+```bash
+curl -X POST http://localhost:1337/api/stripe-demo/pay \
+  -H "Content-Type: application/json" \
+  -d '{"amount": -10}'
+```
+
+**Expected Response:**
+```json
+{
+  "error": {
+    "status": 400,
+    "message": "Amount is required and must be a positive number"
+  }
+}
+```
+
+**Status Code:** 400
+
+#### Test 9: Create Payment Intent - Missing Stripe Key Configuration
+
+**Prerequisites:** First, ensure no Stripe key is configured (or clear it using a direct database query).
+
+```bash
+curl -X POST http://localhost:1337/api/stripe-demo/pay \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 10.50}'
+```
+
+**Expected Response:**
+```json
+{
+  "error": {
+    "message": "Stripe API key is not configured. Please configure it in the admin panel."
+  }
+}
+```
+
+**Status Code:** 400
+
+#### Test 10: Create Payment Intent - Invalid Stripe API Key
+
+**Prerequisites:** Configure an invalid Stripe API key using Test 2 (e.g., `sk_test_invalid_key_12345`).
+
+```bash
+curl -X POST http://localhost:1337/api/stripe-demo/pay \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 10.50}'
+```
+
+**Expected Response:**
+```json
+{
+  "error": {
+    "message": "Invalid Stripe API key. Please check your API key configuration."
+  }
+}
+```
+
+**Status Code:** 400
+
+**Note:** This test verifies that the server doesn't crash with invalid Stripe keys. The error handling returns a proper 400 response instead of a 500 Internal Server Error.
+
 ### Step 5: Verify Data Persistence
 
 1. Restart Strapi server
@@ -155,6 +272,7 @@ curl -X PUT http://localhost:1337/strapi-plugin/stripe-demo/config \
 
 ## Testing Checklist
 
+### Configuration Endpoints
 - [ ] TypeScript compilation succeeds (no errors)
 - [ ] Plugin builds successfully
 - [ ] Strapi starts without errors
@@ -164,6 +282,14 @@ curl -X PUT http://localhost:1337/strapi-plugin/stripe-demo/config \
 - [ ] Policy blocks non-super admin users (403 status)
 - [ ] Validation rejects empty/invalid inputs (400 status)
 - [ ] Data persists after server restart
+
+### Payment Intent Endpoint
+- [ ] POST /api/stripe-demo/pay creates payment intent with valid key (200 status)
+- [ ] POST /api/stripe-demo/pay rejects missing amount (400 status)
+- [ ] POST /api/stripe-demo/pay rejects invalid/negative amount (400 status)
+- [ ] POST /api/stripe-demo/pay handles missing Stripe key gracefully (400 status, no server crash)
+- [ ] POST /api/stripe-demo/pay handles invalid Stripe key gracefully (400 status, no server crash)
+- [ ] Error responses are properly formatted JSON (not Internal Server Error)
 
 ## Troubleshooting
 
@@ -187,11 +313,17 @@ curl -X PUT http://localhost:1337/strapi-plugin/stripe-demo/config \
 - Check database for `core_store` table
 - Verify store key: `plugin_stripe-demo_config`
 
+### Payment Intent Errors
+- **Server crashing with invalid Stripe key**: Verify that try-catch blocks are properly implemented in both service and controller
+- **500 Internal Server Error**: Check that controller returns structured error responses (400 status with error object)
+- **Invalid Stripe key not detected**: Ensure Stripe error types are properly checked (`StripeAuthenticationError`)
+
 ## Next Steps
 
 Once backend testing is complete:
-1. Create admin panel UI for configuration
-2. Add form validation
-3. Add loading states
-4. Add success/error notifications
+1. Create admin panel UI for configuration (already done)
+2. Add form validation (already done)
+3. Add loading states (already done)
+4. Add success/error notifications (already done)
+5. Consider adding more Stripe operations (refunds, webhooks, etc.)
 

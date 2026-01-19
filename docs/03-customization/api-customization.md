@@ -1,77 +1,189 @@
-# API Customization Guide
+# API Customization Guide (Enhanced)
 
 ## Overview
 
-This guide covers customizing Strapi's REST and GraphQL APIs, including endpoint customization, response transformations, custom routes, middleware, policies, and error handling patterns.
+This guide covers customizing Strapi's REST and GraphQL APIs from a learning perspective. You'll learn how to extend default endpoints, create custom routes, transform responses, implement middleware and policies, handle errors, and work with GraphQL resolvers and mutations. Each section includes practical examples and real-world use cases.
+
+**Why Customize APIs?**
+- Add business logic beyond standard CRUD operations
+- Transform data to match frontend requirements
+- Implement custom authentication and authorization
+- Optimize API responses for performance
+- Create specialized endpoints for specific features
 
 ---
 
 ## REST API Customization
 
-### Default REST Endpoints
+### Understanding Default REST Endpoints
 
-Strapi automatically generates REST endpoints for each Content Type:
+Strapi automatically generates REST endpoints for each Content Type. These endpoints follow REST conventions and provide standard CRUD operations.
 
+**Default Endpoints:**
 ```
-GET    /api/articles          # List all articles
-GET    /api/articles/:id      # Get single article
-POST   /api/articles          # Create article
-PUT    /api/articles/:id      # Update article
+GET    /api/articles          # List all articles (with filters, pagination, sorting)
+GET    /api/articles/:id      # Get single article by ID
+POST   /api/articles          # Create new article
+PUT    /api/articles/:id      # Update entire article
+PATCH  /api/articles/:id      # Partial update
 DELETE /api/articles/:id      # Delete article
 ```
 
+**Use Case:** A blog platform needs these endpoints to manage articles. The default endpoints handle most cases, but you might need custom endpoints for features like "featured articles" or "search."
+
 ### Customizing Default Endpoints
 
-#### Override Controller Methods
+#### Method 1: Extending Default Controllers (Recommended)
 
-```javascript
-// src/api/article/controllers/article.js
-const { createCoreController } = require('@strapi/strapi').factories;
+Extend default controllers to add custom logic while preserving built-in functionality like sanitization and validation.
 
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    // Custom find logic
-    const { data, meta } = await super.find(ctx);
-    
-    // Transform response
-    const transformedData = data.map(item => ({
-      ...item,
-      customField: 'custom value'
-    }));
+**Real-World Scenario:** You want to add view tracking when someone reads an article.
 
-    return { data: transformedData, meta };
-  },
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-  async findOne(ctx) {
-    // Custom findOne logic
-    const response = await super.findOne(ctx);
-    
-    // Add custom data
-    if (response.data) {
-      response.data.attributes.customData = await strapi
-        .service('api::article.article')
-        .getCustomData(response.data.id);
-    }
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async findOne(ctx) {
+      // Call the default findOne method
+      const response = await super.findOne(ctx);
 
-    return response;
-  }
-}));
+      // Add custom logic: Track article view
+      if (response.data) {
+        const { id } = ctx.params;
+        
+        // Increment view count
+        await strapi.entityService.update('api::article.article', id, {
+          data: {
+            views: (response.data.attributes.views || 0) + 1,
+          },
+        });
+
+        // Log view for analytics
+        strapi.log.info(`Article ${id} viewed`);
+      }
+
+      return response;
+    },
+
+    async find(ctx) {
+      // Add default filter: only show published articles
+      ctx.query = {
+        ...ctx.query,
+        filters: {
+          ...ctx.query.filters,
+          publishedAt: { $notNull: true },
+        },
+      };
+
+      // Call default find method
+      const { data, meta } = await super.find(ctx);
+
+      // Transform response: add excerpt and reading time
+      const transformedData = data.map((item) => ({
+        ...item,
+        attributes: {
+          ...item.attributes,
+          excerpt: item.attributes.content?.substring(0, 150) || '',
+          readingTime: Math.ceil(
+            (item.attributes.content?.split(/\s+/).length || 0) / 200
+          ),
+        },
+      }));
+
+      return { data: transformedData, meta };
+    },
+  })
+);
 ```
+
+**Learning Points:**
+- Use `super.methodName()` to call parent methods
+- Access request context via `ctx` parameter
+- Transform data before returning to client
+- Always preserve sanitization by using `super` methods
+
+#### Method 2: Replacing Core Actions with Sanitization
+
+When you need complete control, replace core actions but **always use sanitization methods** to prevent security vulnerabilities.
+
+**Real-World Scenario:** Creating a custom search endpoint that requires special filtering logic.
+
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
+
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      // Validate query parameters
+      await this.validateQuery(ctx);
+
+      // Sanitize query to remove invalid params
+      const sanitizedQuery = await this.sanitizeQuery(ctx);
+
+      // Custom filtering logic
+      const customFilters = {
+        ...sanitizedQuery.filters,
+        // Always filter published articles
+        publishedAt: { $notNull: true },
+        // Add custom filter based on user role
+        ...(ctx.state.user?.role?.name === 'Editor' && {
+          // Editors see all articles
+        }),
+        ...(ctx.state.user?.role?.name === 'Author' && {
+          // Authors only see their own articles
+          author: { id: ctx.state.user.id },
+        }),
+      };
+
+      // Fetch data using Entity Service
+      const { results, pagination } = await strapi
+        .service('api::article.article')
+        .find({
+          ...sanitizedQuery,
+          filters: customFilters,
+        });
+
+      // Sanitize output to prevent leaking private fields
+      const sanitizedResults = await this.sanitizeOutput(results, ctx);
+
+      // Transform response
+      return this.transformResponse(sanitizedResults, { pagination });
+    },
+  })
+);
+```
+
+**Security Note:** Always use `sanitizeQuery`, `sanitizeInput`, and `sanitizeOutput` when replacing core actions. These methods ensure users can't access unauthorized data or bypass validation.
 
 ### Custom API Routes
 
-#### Adding Custom Routes
+Create routes for operations that don't fit standard CRUD patterns.
 
-```javascript
-// src/api/article/routes/custom.js
-'use strict';
+**Use Cases:**
+- Featured content endpoints
+- Search functionality
+- Bulk operations
+- Status changes (publish/unpublish)
+- Analytics endpoints
 
-module.exports = {
+#### Creating Custom Routes
+
+```typescript
+// src/api/article/routes/01-custom-article.ts
+import type { Core } from '@strapi/strapi';
+
+const config: Core.RouterConfig = {
+  type: 'content-api',
   routes: [
     {
       method: 'GET',
       path: '/articles/featured',
-      handler: 'article.featured',
+      handler: 'api::article.article.featured',
       config: {
         policies: [],
         middlewares: [],
@@ -80,7 +192,7 @@ module.exports = {
     {
       method: 'GET',
       path: '/articles/search',
-      handler: 'article.search',
+      handler: 'api::article.article.search',
       config: {
         policies: [],
         middlewares: [],
@@ -89,16 +201,25 @@ module.exports = {
     {
       method: 'POST',
       path: '/articles/:id/publish',
-      handler: 'article.publish',
+      handler: 'api::article.article.publish',
       config: {
-        policies: ['is-authenticated'],
+        policies: ['plugin::users-permissions.isAuthenticated'],
+        middlewares: [],
+      },
+    },
+    {
+      method: 'POST',
+      path: '/articles/:id/unpublish',
+      handler: 'api::article.article.unpublish',
+      config: {
+        policies: ['plugin::users-permissions.isAuthenticated'],
         middlewares: [],
       },
     },
     {
       method: 'GET',
       path: '/articles/author/:authorId',
-      handler: 'article.byAuthor',
+      handler: 'api::article.article.byAuthor',
       config: {
         policies: [],
         middlewares: [],
@@ -106,325 +227,895 @@ module.exports = {
     },
   ],
 };
+
+export default config;
 ```
 
-#### Custom Route Handlers
+#### Implementing Custom Route Handlers
 
-```javascript
-// src/api/article/controllers/article.js
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  // Custom action: Featured articles
-  async featured(ctx) {
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        featured: true,
-        publishedAt: { $notNull: true }
-      },
-      sort: { publishedAt: 'desc' },
-      limit: 10,
-      populate: ['author', 'categories']
-    });
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-    return { data: entries };
-  },
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    // Custom action: Get featured articles
+    async featured(ctx) {
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            featured: true,
+            publishedAt: { $notNull: true },
+          },
+          sort: { publishedAt: 'desc' },
+          limit: 10,
+          populate: ['author', 'categories'],
+        }
+      );
 
-  // Custom action: Search
-  async search(ctx) {
-    const { query } = ctx.query;
+      return { data: entries };
+    },
 
-    if (!query) {
-      return ctx.badRequest('Search query is required');
-    }
+    // Custom action: Search articles
+    async search(ctx) {
+      const { query } = ctx.query;
 
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        $or: [
-          { title: { $contains: query } },
-          { content: { $contains: query } }
-        ]
-      },
-      populate: ['author']
-    });
-
-    return { data: entries };
-  },
-
-  // Custom action: Publish
-  async publish(ctx) {
-    const { id } = ctx.params;
-
-    const entry = await strapi.entityService.update('api::article.article', id, {
-      data: {
-        publishedAt: new Date()
+      if (!query || query.trim().length === 0) {
+        return ctx.badRequest('Search query is required');
       }
-    });
 
-    return { data: entry };
-  },
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            $or: [
+              { title: { $contains: query } },
+              { content: { $contains: query } },
+              { excerpt: { $contains: query } },
+            ],
+            publishedAt: { $notNull: true },
+          },
+          populate: ['author', 'categories'],
+          sort: { publishedAt: 'desc' },
+        }
+      );
 
-  // Custom action: By author
-  async byAuthor(ctx) {
-    const { authorId } = ctx.params;
+      return { data: entries };
+    },
 
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: {
-        author: authorId
-      },
-      populate: ['author', 'categories']
-    });
+    // Custom action: Publish article
+    async publish(ctx) {
+      const { id } = ctx.params;
+      const user = ctx.state.user;
 
-    return { data: entries };
-  }
-}));
+      if (!user) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      // Check permissions
+      const article = await strapi.entityService.findOne(
+        'api::article.article',
+        id,
+        { populate: ['author'] }
+      );
+
+      if (!article) {
+        return ctx.notFound('Article not found');
+      }
+
+      // Check if user can publish (owner or admin)
+      if (
+        article.author?.id !== user.id &&
+        user.role?.name !== 'Administrator'
+      ) {
+        return ctx.forbidden('You do not have permission to publish this article');
+      }
+
+      const updatedArticle = await strapi.entityService.update(
+        'api::article.article',
+        id,
+        {
+          data: {
+            publishedAt: new Date(),
+          },
+        }
+      );
+
+      // Send notification
+      await strapi.service('api::article.article').sendPublishNotification(
+        id
+      );
+
+      return { data: updatedArticle };
+    },
+
+    // Custom action: Unpublish article
+    async unpublish(ctx) {
+      const { id } = ctx.params;
+      const user = ctx.state.user;
+
+      if (!user) {
+        return ctx.unauthorized('Authentication required');
+      }
+
+      const updatedArticle = await strapi.entityService.update(
+        'api::article.article',
+        id,
+        {
+          data: {
+            publishedAt: null,
+          },
+        }
+      );
+
+      return { data: updatedArticle };
+    },
+
+    // Custom action: Get articles by author
+    async byAuthor(ctx) {
+      const { authorId } = ctx.params;
+
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            author: authorId,
+            publishedAt: { $notNull: true },
+          },
+          populate: ['author', 'categories'],
+          sort: { publishedAt: 'desc' },
+        }
+      );
+
+      return { data: entries };
+    },
+  })
+);
 ```
+
+**Learning Points:**
+- Custom routes extend beyond CRUD operations
+- Use route parameters (`:id`, `:authorId`) for dynamic values
+- Apply policies for authentication/authorization
+- Return consistent response format
 
 ### API Response Transformations
 
+Transform API responses to match frontend requirements or add computed fields.
+
+**Use Cases:**
+- Add computed fields (reading time, excerpt)
+- Remove sensitive data
+- Flatten nested structures
+- Add metadata or analytics
+
 #### Transform Response Data
 
-```javascript
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    const { data, meta } = await super.find(ctx);
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-    // Transform each item
-    const transformedData = data.map(item => ({
-      id: item.id,
-      title: item.attributes.title,
-      slug: item.attributes.slug,
-      excerpt: item.attributes.content.substring(0, 150),
-      author: {
-        name: item.attributes.author?.data?.attributes?.name,
-        email: item.attributes.author?.data?.attributes?.email
-      },
-      publishedAt: item.attributes.publishedAt,
-      // Remove sensitive fields
-      // Add computed fields
-    }));
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      const { data, meta } = await super.find(ctx);
 
-    return { data: transformedData, meta };
-  }
-}));
+      // Transform each item
+      const transformedData = data.map((item) => {
+        // Calculate reading time (assuming 200 words per minute)
+        const wordCount = item.attributes.content?.split(/\s+/).length || 0;
+        const readingTime = Math.ceil(wordCount / 200);
+
+        // Create excerpt
+        const excerpt =
+          item.attributes.content?.substring(0, 150) + '...' || '';
+
+        return {
+          id: item.id,
+          documentId: item.documentId,
+          title: item.attributes.title,
+          slug: item.attributes.slug,
+          excerpt,
+          readingTime,
+          publishedAt: item.attributes.publishedAt,
+          // Flatten author data
+          author: {
+            id: item.attributes.author?.data?.id,
+            name: item.attributes.author?.data?.attributes?.name,
+            email: item.attributes.author?.data?.attributes?.email,
+          },
+          // Remove sensitive fields (like internal notes)
+          // Add computed fields
+        };
+      });
+
+      return { data: transformedData, meta };
+    },
+  })
+);
 ```
 
 #### Custom Response Format
 
-```javascript
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    const { data, meta } = await super.find(ctx);
+```typescript
+// Custom response format for mobile app
+async find(ctx) {
+  const { data, meta } = await super.find(ctx);
 
-    // Custom response format
-    return {
-      success: true,
-      articles: data,
-      pagination: {
-        page: meta.pagination.page,
-        pageSize: meta.pagination.pageSize,
-        total: meta.pagination.total,
-        pageCount: meta.pagination.pageCount
-      },
-      timestamp: new Date().toISOString()
-    };
-  }
-}));
-```
-
-### Query Parameter Customization
-
-#### Custom Filtering
-
-```javascript
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    const { query } = ctx;
-
-    // Custom filter logic
-    const filters = {
-      ...query.filters,
-      // Add custom filters
-      publishedAt: { $notNull: true }
-    };
-
-    // Custom sort
-    const sort = query.sort || { publishedAt: 'desc' };
-
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters,
-      sort,
-      populate: query.populate || ['author'],
-      pagination: {
-        page: query.pagination?.page || 1,
-        pageSize: query.pagination?.pageSize || 10
-      }
-    });
-
-    return { data: entries };
-  }
-}));
+  return {
+    success: true,
+    articles: data.map((item) => ({
+      id: item.id,
+      ...item.attributes,
+    })),
+    pagination: {
+      page: meta.pagination.page,
+      pageSize: meta.pagination.pageSize,
+      total: meta.pagination.total,
+      pageCount: meta.pagination.pageCount,
+    },
+    timestamp: new Date().toISOString(),
+  };
+}
 ```
 
 ---
 
 ## GraphQL API Customization
 
-### Enabling GraphQL
+### Understanding GraphQL in Strapi
 
-Install the GraphQL plugin:
+GraphQL provides a flexible query language that allows clients to request exactly the data they need. Strapi's GraphQL plugin automatically generates a schema from your Content Types, but you can extend it with custom resolvers and mutations.
+
+**Why Use GraphQL?**
+- Clients request only needed fields (reduces over-fetching)
+- Single endpoint for all queries
+- Strongly typed schema
+- Real-time subscriptions (with additional setup)
+
+### Enabling and Configuring GraphQL
+
+#### Installation
 
 ```bash
+# Using Yarn
 yarn strapi install graphql
-# or
+
+# Using npm
 npm run strapi install graphql
 ```
 
-### Custom GraphQL Resolvers
+#### Configuration
 
-#### Extend Default Resolvers
-
-```javascript
-// config/plugins.js
-module.exports = {
+```typescript
+// config/plugins.ts
+export default {
   graphql: {
+    enabled: true,
     config: {
       endpoint: '/graphql',
-      shadowCRUD: true,
-      playgroundAlways: false,
-      depthLimit: 7,
-      amountLimit: 100,
+      shadowCRUD: true, // Auto-generate schema from Content Types
+      playgroundAlways: false, // Only in development
+      depthLimit: 7, // Prevent deeply nested queries
+      amountLimit: 100, // Maximum results per query
       apolloServer: {
-        tracing: false,
+        tracing: false, // Enable for performance monitoring
       },
     },
   },
 };
 ```
 
-#### Custom Resolvers
+**Configuration Options Explained:**
+- **endpoint**: GraphQL endpoint URL (default: `/graphql`)
+- **shadowCRUD**: Automatically creates GraphQL schema from Content Types
+- **playgroundAlways**: Show GraphQL playground in production (not recommended)
+- **depthLimit**: Prevents expensive deep queries (e.g., `article { author { articles { author { ... } } } }`)
+- **amountLimit**: Maximum number of results to prevent large responses
 
-```javascript
-// src/api/article/config/schema.graphql.js
-module.exports = {
-  resolver: {
+### Custom GraphQL Resolvers
+
+Resolvers are functions that resolve GraphQL queries and mutations. Strapi generates default resolvers, but you can create custom ones for specialized operations.
+
+#### Understanding Resolver Structure
+
+A resolver function receives three parameters:
+1. **parent**: Result from parent resolver (for nested queries)
+2. **args**: Arguments passed to the query/mutation
+3. **context**: Request context (includes user, strapi instance)
+
+#### Creating Custom Query Resolvers
+
+**Use Case:** Create a featured articles query that returns only published, featured articles sorted by popularity.
+
+```typescript
+// src/api/article/config/schema.graphql.ts
+import type { Core } from '@strapi/strapi';
+
+export default {
+  typeDefs: `
+    type Query {
+      featuredArticles(limit: Int): [Article]
+      searchArticles(query: String!, limit: Int): [Article]
+      popularArticles(days: Int, limit: Int): [Article]
+    }
+  `,
+  resolvers: {
     Query: {
-      featuredArticles: {
-        resolver: async (obj, options, { context }) => {
-          const entries = await strapi.entityService.findMany('api::article.article', {
+      // Featured articles query
+      featuredArticles: async (parent: any, args: any, context: any) => {
+        const { limit = 10 } = args;
+
+        const entries = await strapi.entityService.findMany(
+          'api::article.article',
+          {
             filters: {
               featured: true,
-              publishedAt: { $notNull: true }
+              publishedAt: { $notNull: true },
             },
             sort: { publishedAt: 'desc' },
-            limit: 10
-          });
+            limit,
+            populate: ['author', 'categories'],
+          }
+        );
 
-          return entries;
-        }
+        return entries;
       },
-      searchArticles: {
-        resolver: async (obj, options, { context }) => {
-          const { query } = options;
 
-          const entries = await strapi.entityService.findMany('api::article.article', {
+      // Search articles query
+      searchArticles: async (parent: any, args: any, context: any) => {
+        const { query, limit = 20 } = args;
+
+        if (!query || query.trim().length === 0) {
+          throw new Error('Search query is required');
+        }
+
+        const entries = await strapi.entityService.findMany(
+          'api::article.article',
+          {
             filters: {
               $or: [
                 { title: { $contains: query } },
-                { content: { $contains: query } }
-              ]
-            }
-          });
+                { content: { $contains: query } },
+                { excerpt: { $contains: query } },
+              ],
+              publishedAt: { $notNull: true },
+            },
+            sort: { publishedAt: 'desc' },
+            limit,
+            populate: ['author'],
+          }
+        );
 
-          return entries;
-        }
-      }
+        return entries;
+      },
+
+      // Popular articles based on views
+      popularArticles: async (parent: any, args: any, context: any) => {
+        const { days = 7, limit = 10 } = args;
+        const dateLimit = new Date();
+        dateLimit.setDate(dateLimit.getDate() - days);
+
+        const entries = await strapi.entityService.findMany(
+          'api::article.article',
+          {
+            filters: {
+              publishedAt: { $gte: dateLimit.toISOString() },
+            },
+            sort: { views: 'desc' },
+            limit,
+            populate: ['author'],
+          }
+        );
+
+        return entries;
+      },
     },
-    Mutation: {
-      publishArticle: {
-        resolver: async (obj, options, { context }) => {
-          const { id } = options;
-
-          const entry = await strapi.entityService.update('api::article.article', id, {
-            data: {
-              publishedAt: new Date()
-            }
-          });
-
-          return entry;
-        }
-      }
-    }
-  }
+  },
 };
 ```
 
-#### Custom GraphQL Schema
+#### GraphQL Query Examples
 
 ```graphql
-# src/api/article/config/schema.graphql
-type Query {
-  featuredArticles: [Article]
-  searchArticles(query: String!): [Article]
+# Query featured articles
+query {
+  featuredArticles(limit: 5) {
+    id
+    documentId
+    title
+    slug
+    publishedAt
+    author {
+      name
+      email
+    }
+    categories {
+      name
+    }
+  }
 }
 
-type Mutation {
-  publishArticle(id: ID!): Article
+# Search articles
+query {
+  searchArticles(query: "TypeScript", limit: 10) {
+    id
+    title
+    excerpt
+    publishedAt
+  }
 }
+
+# Popular articles from last 30 days
+query {
+  popularArticles(days: 30, limit: 5) {
+    id
+    title
+    views
+    publishedAt
+  }
+}
+```
+
+### GraphQL Mutations
+
+Mutations modify data in GraphQL. Strapi provides default mutations (create, update, delete), but you can create custom mutations for complex operations.
+
+#### Understanding Mutations
+
+Mutations are operations that change data. They should:
+- Return the modified data
+- Handle errors gracefully
+- Validate input
+- Check permissions
+
+#### Creating Custom Mutations
+
+**Use Case 1: Publish Article Mutation**
+
+```typescript
+// src/api/article/config/schema.graphql.ts
+export default {
+  typeDefs: `
+    type Mutation {
+      publishArticle(id: ID!): ArticleEntityResponse
+      unpublishArticle(id: ID!): ArticleEntityResponse
+      updateArticleViews(id: ID!): ArticleEntityResponse
+      bulkPublishArticles(ids: [ID!]!): BulkPublishResponse
+    }
+
+    type BulkPublishResponse {
+      success: Boolean!
+      published: Int!
+      failed: Int!
+      errors: [String!]
+    }
+  `,
+  resolvers: {
+    Mutation: {
+      // Publish a single article
+      publishArticle: async (parent: any, args: any, context: any) => {
+        const { id } = args;
+        const { user } = context.state;
+
+        if (!user) {
+          throw new Error('Authentication required');
+        }
+
+        // Check if article exists
+        const article = await strapi.entityService.findOne(
+          'api::article.article',
+          id,
+          { populate: ['author'] }
+        );
+
+        if (!article) {
+          throw new Error('Article not found');
+        }
+
+        // Check permissions
+        if (
+          article.author?.id !== user.id &&
+          user.role?.name !== 'Administrator'
+        ) {
+          throw new Error('You do not have permission to publish this article');
+        }
+
+        // Update article
+        const updatedArticle = await strapi.entityService.update(
+          'api::article.article',
+          id,
+          {
+            data: {
+              publishedAt: new Date(),
+            },
+          }
+        );
+
+        // Send notification
+        await strapi
+          .service('api::article.article')
+          .sendPublishNotification(id);
+
+        return {
+          data: {
+            id: updatedArticle.id,
+            documentId: updatedArticle.documentId,
+            attributes: updatedArticle,
+          },
+        };
+      },
+
+      // Unpublish article
+      unpublishArticle: async (parent: any, args: any, context: any) => {
+        const { id } = args;
+        const { user } = context.state;
+
+        if (!user) {
+          throw new Error('Authentication required');
+        }
+
+        const updatedArticle = await strapi.entityService.update(
+          'api::article.article',
+          id,
+          {
+            data: {
+              publishedAt: null,
+            },
+          }
+        );
+
+        return {
+          data: {
+            id: updatedArticle.id,
+            documentId: updatedArticle.documentId,
+            attributes: updatedArticle,
+          },
+        };
+      },
+
+      // Update article views (for tracking)
+      updateArticleViews: async (parent: any, args: any, context: any) => {
+        const { id } = args;
+
+        const article = await strapi.entityService.findOne(
+          'api::article.article',
+          id
+        );
+
+        if (!article) {
+          throw new Error('Article not found');
+        }
+
+        const updatedArticle = await strapi.entityService.update(
+          'api::article.article',
+          id,
+          {
+            data: {
+              views: (article.views || 0) + 1,
+            },
+          }
+        );
+
+        return {
+          data: {
+            id: updatedArticle.id,
+            documentId: updatedArticle.documentId,
+            attributes: updatedArticle,
+          },
+        };
+      },
+
+      // Bulk publish articles
+      bulkPublishArticles: async (parent: any, args: any, context: any) => {
+        const { ids } = args;
+        const { user } = context.state;
+
+        if (!user) {
+          throw new Error('Authentication required');
+        }
+
+        let published = 0;
+        let failed = 0;
+        const errors: string[] = [];
+
+        for (const id of ids) {
+          try {
+            const article = await strapi.entityService.findOne(
+              'api::article.article',
+              id,
+              { populate: ['author'] }
+            );
+
+            if (!article) {
+              failed++;
+              errors.push(`Article ${id} not found`);
+              continue;
+            }
+
+            // Check permissions
+            if (
+              article.author?.id !== user.id &&
+              user.role?.name !== 'Administrator'
+            ) {
+              failed++;
+              errors.push(`No permission to publish article ${id}`);
+              continue;
+            }
+
+            await strapi.entityService.update('api::article.article', id, {
+              data: {
+                publishedAt: new Date(),
+              },
+            });
+
+            published++;
+          } catch (error: any) {
+            failed++;
+            errors.push(`Error publishing article ${id}: ${error.message}`);
+          }
+        }
+
+        return {
+          success: failed === 0,
+          published,
+          failed,
+          errors,
+        };
+      },
+    },
+  },
+};
+```
+
+#### GraphQL Mutation Examples
+
+```graphql
+# Publish a single article
+mutation {
+  publishArticle(id: "1") {
+    data {
+      id
+      documentId
+      attributes {
+        title
+        publishedAt
+      }
+    }
+  }
+}
+
+# Unpublish article
+mutation {
+  unpublishArticle(id: "1") {
+    data {
+      id
+      attributes {
+        publishedAt
+      }
+    }
+  }
+}
+
+# Update article views
+mutation {
+  updateArticleViews(id: "1") {
+    data {
+      id
+      attributes {
+        views
+      }
+    }
+  }
+}
+
+# Bulk publish articles
+mutation {
+  bulkPublishArticles(ids: ["1", "2", "3"]) {
+    success
+    published
+    failed
+    errors
+  }
+}
+```
+
+#### Advanced Mutation: Create Article with Validation
+
+```typescript
+// Create article with custom validation and side effects
+createArticle: async (parent: any, args: any, context: any) => {
+  const { data } = args;
+  const { user } = context.state;
+
+  if (!user) {
+    throw new Error('Authentication required');
+  }
+
+  // Custom validation
+  if (!data.title || data.title.length < 10) {
+    throw new Error('Title must be at least 10 characters');
+  }
+
+  if (!data.content || data.content.length < 100) {
+    throw new Error('Content must be at least 100 characters');
+  }
+
+  // Generate slug
+  const slug = data.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
+  // Create article
+  const article = await strapi.entityService.create(
+    'api::article.article',
+    {
+      data: {
+        ...data,
+        slug,
+        author: user.id,
+        publishedAt: data.publish ? new Date() : null,
+      },
+    }
+  );
+
+  // Send notification if published
+  if (article.publishedAt) {
+    await strapi
+      .service('api::article.article')
+      .sendPublishNotification(article.id);
+  }
+
+  return {
+    data: {
+      id: article.id,
+      documentId: article.documentId,
+      attributes: article,
+    },
+  };
+},
 ```
 
 ### GraphQL Response Transformations
 
-```javascript
-module.exports = {
-  resolver: {
-    Query: {
-      articles: {
-        resolver: async (obj, options, { context }) => {
-          const entries = await strapi.entityService.findMany('api::article.article', options);
+Transform GraphQL responses to add computed fields or modify data structure.
 
-          // Transform response
-          return entries.map(entry => ({
-            ...entry,
-            readingTime: calculateReadingTime(entry.content),
-            excerpt: entry.content.substring(0, 150)
-          }));
-        }
-      }
-    }
+```typescript
+// Add computed fields to GraphQL responses
+resolvers: {
+  Article: {
+    // Add reading time field
+    readingTime: (parent: any) => {
+      const wordCount = parent.content?.split(/\s+/).length || 0;
+      return Math.ceil(wordCount / 200);
+    },
+
+    // Add excerpt field
+    excerpt: (parent: any) => {
+      return parent.content?.substring(0, 150) + '...' || '';
+    },
+
+    // Add formatted date
+    formattedPublishedAt: (parent: any) => {
+      if (!parent.publishedAt) return null;
+      return new Date(parent.publishedAt).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    },
+  },
+},
+```
+
+**GraphQL Query with Computed Fields:**
+
+```graphql
+query {
+  articles {
+    id
+    title
+    content
+    readingTime
+    excerpt
+    formattedPublishedAt
   }
-};
+}
+```
+
+### GraphQL Authentication
+
+GraphQL mutations and protected queries require authentication.
+
+#### Authenticating GraphQL Requests
+
+```typescript
+// In your GraphQL resolver
+const { user } = context.state;
+
+if (!user) {
+  throw new Error('Authentication required');
+}
+
+// Check user role
+if (user.role?.name !== 'Administrator') {
+  throw new Error('Admin access required');
+}
+```
+
+#### Example: Protected Mutation
+
+```typescript
+// Only authenticated users can publish articles
+publishArticle: async (parent: any, args: any, context: any) => {
+  const { user } = context.state;
+
+  if (!user) {
+    throw new Error('You must be logged in to publish articles');
+  }
+
+  // Rest of the mutation logic...
+},
 ```
 
 ---
 
 ## API Middleware
 
+Middleware functions execute before requests reach controllers. They're useful for logging, authentication, rate limiting, and request transformation.
+
+### Understanding Middleware
+
+Middleware runs in sequence and can:
+- Modify request/response
+- Stop request processing
+- Add data to context
+- Log requests
+
 ### Creating Custom Middleware
 
-```javascript
-// src/middlewares/custom-logger.js
-'use strict';
+**Use Case:** Log all API requests with timing information.
 
-module.exports = (config, { strapi }) => {
-  return async (ctx, next) => {
+```typescript
+// src/middlewares/api-logger.ts
+import type { Core } from '@strapi/strapi';
+
+export default (config: any, { strapi }: { strapi: Core.Strapi }) => {
+  return async (ctx: any, next: () => Promise<any>) => {
     const start = Date.now();
 
     // Log request
     strapi.log.info(`[${ctx.method}] ${ctx.url}`);
 
-    await next();
+    // Add request ID to context
+    ctx.state.requestId = `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    try {
+      await next();
+    } catch (error: any) {
+      // Log errors
+      strapi.log.error(`[${ctx.method}] ${ctx.url} - Error:`, error);
+      throw error;
+    }
 
     // Log response
     const duration = Date.now() - start;
-    strapi.log.info(`[${ctx.method}] ${ctx.url} - ${ctx.status} - ${duration}ms`);
+    strapi.log.info(
+      `[${ctx.method}] ${ctx.url} - ${ctx.status} - ${duration}ms`
+    );
   };
 };
 ```
 
 ### Registering Middleware
 
-```javascript
-// config/middlewares.js
-module.exports = [
+```typescript
+// config/middlewares.ts
+export default [
   'strapi::logger',
   'strapi::errors',
   'strapi::security',
@@ -440,22 +1131,24 @@ module.exports = [
   'strapi::session',
   'strapi::favicon',
   'strapi::public',
-  'global::custom-logger', // Custom middleware
+  'global::api-logger', // Your custom middleware
 ];
 ```
 
 ### Route-Specific Middleware
 
-```javascript
-// src/api/article/routes/article.js
-module.exports = {
+Apply middleware to specific routes:
+
+```typescript
+// src/api/article/routes/article.ts
+export default {
   routes: [
     {
       method: 'POST',
       path: '/articles',
       handler: 'article.create',
       config: {
-        middlewares: ['global::custom-logger', 'global::rate-limit'],
+        middlewares: ['global::api-logger', 'global::rate-limit'],
       },
     },
   ],
@@ -466,45 +1159,70 @@ module.exports = {
 
 ## API Policies
 
+Policies are authorization functions that determine if a user can access a resource. They return `true` to allow access or `false` to deny it.
+
+### Understanding Policies
+
+Policies check:
+- User authentication status
+- User roles and permissions
+- Resource ownership
+- Custom business rules
+
 ### Creating Policies
 
-```javascript
-// src/policies/is-owner.js
-'use strict';
+**Use Case:** Only allow article owners or admins to update articles.
 
-module.exports = async (policyContext, config, { strapi }) => {
+```typescript
+// src/policies/is-owner-or-admin.ts
+import type { Core } from '@strapi/strapi';
+
+export default async (
+  policyContext: any,
+  config: any,
+  { strapi }: { strapi: Core.Strapi }
+) => {
   const { id } = policyContext.params;
   const user = policyContext.state.user;
 
   if (!user) {
-    return false;
+    return false; // Not authenticated
+  }
+
+  // Admins can always access
+  if (user.role?.name === 'Administrator') {
+    return true;
   }
 
   // Check if user owns the resource
-  const entry = await strapi.entityService.findOne('api::article.article', id, {
-    populate: ['author']
-  });
+  const entry = await strapi.entityService.findOne(
+    'api::article.article',
+    id,
+    {
+      populate: ['author'],
+    }
+  );
 
   if (!entry) {
-    return false;
+    return false; // Resource doesn't exist
   }
 
-  return entry.author.id === user.id;
+  return entry.author?.id === user.id;
 };
 ```
 
 ### Using Policies
 
-```javascript
-// src/api/article/routes/article.js
-module.exports = {
+```typescript
+// src/api/article/routes/article.ts
+export default {
   routes: [
     {
       method: 'PUT',
       path: '/articles/:id',
       handler: 'article.update',
       config: {
-        policies: ['is-owner'], // Apply policy
+        policies: ['global::is-owner-or-admin'],
       },
     },
     {
@@ -512,7 +1230,7 @@ module.exports = {
       path: '/articles/:id',
       handler: 'article.delete',
       config: {
-        policies: ['is-owner', 'is-admin'], // Multiple policies
+        policies: ['global::is-owner-or-admin'],
       },
     },
   ],
@@ -521,9 +1239,11 @@ module.exports = {
 
 ### Policy with Configuration
 
-```javascript
-// src/policies/has-role.js
-module.exports = async (policyContext, config, { strapi }) => {
+Create reusable policies that accept configuration:
+
+```typescript
+// src/policies/has-role.ts
+export default async (policyContext: any, config: any, { strapi }: any) => {
   const { role } = config; // Get role from config
   const user = policyContext.state.user;
 
@@ -531,12 +1251,13 @@ module.exports = async (policyContext, config, { strapi }) => {
     return false;
   }
 
-  return user.role.name === role;
+  return user.role?.name === role;
 };
 ```
 
-```javascript
-// Usage with config
+**Using Configured Policy:**
+
+```typescript
 {
   method: 'POST',
   path: '/articles',
@@ -544,9 +1265,9 @@ module.exports = async (policyContext, config, { strapi }) => {
   config: {
     policies: [
       {
-        name: 'has-role',
-        config: { role: 'Editor' }
-      }
+        name: 'global::has-role',
+        config: { role: 'Editor' },
+      },
     ],
   },
 }
@@ -556,61 +1277,73 @@ module.exports = async (policyContext, config, { strapi }) => {
 
 ## Error Handling
 
+Proper error handling provides clear feedback to API consumers and helps with debugging.
+
 ### Custom Error Responses
 
-```javascript
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    try {
-      const { data, meta } = await super.find(ctx);
-      return { data, meta };
-    } catch (error) {
-      strapi.log.error('Error in find:', error);
-      
-      return ctx.badRequest('Failed to fetch articles', {
-        error: error.message,
-        code: 'FETCH_ERROR'
-      });
-    }
-  },
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-  async create(ctx) {
-    try {
-      // Validation
-      const { data } = ctx.request.body;
-      
-      if (!data.title) {
-        return ctx.badRequest('Title is required');
-      }
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      try {
+        const { data, meta } = await super.find(ctx);
+        return { data, meta };
+      } catch (error: any) {
+        strapi.log.error('Error in find:', error);
 
-      const response = await super.create(ctx);
-      return response;
-    } catch (error) {
-      if (error.name === 'ValidationError') {
-        return ctx.badRequest('Validation failed', {
-          errors: error.errors
+        return ctx.badRequest('Failed to fetch articles', {
+          error: error.message,
+          code: 'FETCH_ERROR',
         });
       }
+    },
 
-      return ctx.internalServerError('Failed to create article', {
-        error: error.message
-      });
-    }
-  }
-}));
+    async create(ctx) {
+      try {
+        const { data } = ctx.request.body;
+
+        // Validation
+        if (!data.title) {
+          return ctx.badRequest('Title is required');
+        }
+
+        if (data.title.length < 10) {
+          return ctx.badRequest('Title must be at least 10 characters');
+        }
+
+        const response = await super.create(ctx);
+        return response;
+      } catch (error: any) {
+        if (error.name === 'ValidationError') {
+          return ctx.badRequest('Validation failed', {
+            errors: error.errors,
+          });
+        }
+
+        return ctx.internalServerError('Failed to create article', {
+          error: error.message,
+        });
+      }
+    },
+  })
+);
 ```
 
-### Global Error Handler
+### Global Error Handler Middleware
 
-```javascript
-// src/middlewares/error-handler.js
-'use strict';
+```typescript
+// src/middlewares/error-handler.ts
+import type { Core } from '@strapi/strapi';
 
-module.exports = (config, { strapi }) => {
-  return async (ctx, next) => {
+export default (config: any, { strapi }: { strapi: Core.Strapi }) => {
+  return async (ctx: any, next: () => Promise<any>) => {
     try {
       await next();
-    } catch (error) {
+    } catch (error: any) {
       strapi.log.error('API Error:', error);
 
       // Custom error response
@@ -620,18 +1353,20 @@ module.exports = (config, { strapi }) => {
           message: error.message || 'Internal server error',
           status: ctx.status,
           code: error.code || 'INTERNAL_ERROR',
-          ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-        }
+          ...(process.env.NODE_ENV === 'development' && {
+            stack: error.stack,
+          }),
+        },
       };
     }
   };
 };
 ```
 
-### Error Response Format
+### Standardized Error Response Format
 
-```javascript
-// Standardized error response
+```typescript
+// Consistent error format across all endpoints
 {
   error: {
     message: "Error message",
@@ -648,11 +1383,13 @@ module.exports = (config, { strapi }) => {
 
 ## API Versioning
 
+API versioning allows you to make breaking changes without affecting existing clients.
+
 ### Route Versioning
 
-```javascript
-// src/api/v1/article/routes/article.js
-module.exports = {
+```typescript
+// src/api/v1/article/routes/article.ts
+export default {
   routes: [
     {
       method: 'GET',
@@ -662,13 +1399,13 @@ module.exports = {
   ],
 };
 
-// src/api/v2/article/routes/article.js
-module.exports = {
+// src/api/v2/article/routes/article.ts
+export default {
   routes: [
     {
       method: 'GET',
       path: '/v2/articles',
-      handler: 'article.find',
+      handler: 'article.find', // Different implementation
     },
   ],
 };
@@ -676,11 +1413,16 @@ module.exports = {
 
 ### Version Middleware
 
-```javascript
-// src/middlewares/api-version.js
-module.exports = (config, { strapi }) => {
-  return async (ctx, next) => {
-    const version = ctx.request.headers['api-version'] || 'v1';
+```typescript
+// src/middlewares/api-version.ts
+export default (config: any, { strapi }: any) => {
+  return async (ctx: any, next: () => Promise<any>) => {
+    // Extract version from header or URL
+    const version =
+      ctx.request.headers['api-version'] ||
+      ctx.url.split('/')[1] ||
+      'v1';
+
     ctx.state.apiVersion = version;
     await next();
   };
@@ -691,22 +1433,24 @@ module.exports = (config, { strapi }) => {
 
 ## Rate Limiting
 
+Rate limiting prevents abuse by limiting the number of requests from a single IP.
+
 ### Rate Limit Middleware
 
-```javascript
-// src/middlewares/rate-limit.js
-'use strict';
+```typescript
+// src/middlewares/rate-limit.ts
+import rateLimit from 'express-rate-limit';
 
-const rateLimit = require('express-rate-limit');
-
-module.exports = (config, { strapi }) => {
+export default (config: any, { strapi }: any) => {
   const limiter = rateLimit({
     windowMs: config.windowMs || 15 * 60 * 1000, // 15 minutes
-    max: config.max || 100, // limit each IP to 100 requests per windowMs
+    max: config.max || 100, // 100 requests per window
     message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
   });
 
-  return async (ctx, next) => {
+  return async (ctx: any, next: () => Promise<any>) => {
     await limiter(ctx.request, ctx.response, next);
   };
 };
@@ -714,54 +1458,18 @@ module.exports = (config, { strapi }) => {
 
 ### Using Rate Limiting
 
-```javascript
-// config/middlewares.js
-module.exports = [
+```typescript
+// config/middlewares.ts
+export default [
   // ... other middlewares
   {
     name: 'global::rate-limit',
     config: {
-      windowMs: 15 * 60 * 1000,
-      max: 100,
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // 100 requests per IP
     },
   },
 ];
-```
-
----
-
-## API Documentation
-
-### OpenAPI/Swagger Integration
-
-Install the documentation plugin:
-
-```bash
-yarn strapi install documentation
-```
-
-### Custom API Documentation
-
-```javascript
-// config/plugins.js
-module.exports = {
-  documentation: {
-    config: {
-      openapi: '3.0.0',
-      info: {
-        version: '1.0.0',
-        title: 'My API Documentation',
-        description: 'API documentation for my Strapi application',
-      },
-      servers: [
-        {
-          url: 'http://localhost:1337',
-          description: 'Development server',
-        },
-      ],
-    },
-  },
-};
 ```
 
 ---
@@ -770,70 +1478,128 @@ module.exports = {
 
 ### API Design
 
-1. **RESTful Conventions**: Follow REST principles
-2. **Consistent Responses**: Use consistent response formats
-3. **Error Handling**: Implement proper error handling
-4. **Validation**: Validate all inputs
-5. **Documentation**: Document all endpoints
+1. **Follow REST Conventions**: Use standard HTTP methods and status codes
+2. **Consistent Responses**: Use consistent response formats across endpoints
+3. **Error Handling**: Provide clear, actionable error messages
+4. **Validation**: Validate all inputs before processing
+5. **Documentation**: Document all endpoints and their parameters
 
 ### Performance
 
 1. **Pagination**: Always paginate large datasets
-2. **Filtering**: Provide filtering options
-3. **Caching**: Implement caching where appropriate
-4. **Optimization**: Optimize database queries
+2. **Filtering**: Provide filtering options to reduce data transfer
+3. **Caching**: Implement caching for frequently accessed data
+4. **Optimization**: Optimize database queries (use populate wisely)
 
 ### Security
 
 1. **Authentication**: Require authentication for protected routes
-2. **Authorization**: Use policies for authorization
-3. **Input Validation**: Validate and sanitize inputs
-4. **Rate Limiting**: Implement rate limiting
+2. **Authorization**: Use policies to check permissions
+3. **Input Validation**: Validate and sanitize all inputs
+4. **Rate Limiting**: Implement rate limiting to prevent abuse
+5. **Sanitization**: Always sanitize outputs to prevent data leaks
 
 ---
 
-## Complete Example
+## Complete Example: Article API
 
-### Custom Article API
+Here's a complete example combining all concepts:
 
-```javascript
-// src/api/article/controllers/article.js
-const { createCoreController } = require('@strapi/strapi').factories;
+```typescript
+// src/api/article/controllers/article.ts
+import { factories } from '@strapi/strapi';
 
-module.exports = createCoreController('api::article.article', ({ strapi }) => ({
-  async find(ctx) {
-    const { data, meta } = await super.find(ctx);
-    
-    // Transform response
-    const transformed = data.map(item => ({
-      id: item.id,
-      ...item.attributes,
-      excerpt: item.attributes.content.substring(0, 150)
-    }));
+export default factories.createCoreController(
+  'api::article.article',
+  ({ strapi }) => ({
+    async find(ctx) {
+      // Add default filters
+      ctx.query = {
+        ...ctx.query,
+        filters: {
+          ...ctx.query.filters,
+          publishedAt: { $notNull: true },
+        },
+      };
 
-    return { data: transformed, meta };
-  },
+      const { data, meta } = await super.find(ctx);
 
-  async featured(ctx) {
-    const entries = await strapi.entityService.findMany('api::article.article', {
-      filters: { featured: true },
-      sort: { publishedAt: 'desc' },
-      limit: 10
-    });
+      // Transform response
+      const transformedData = data.map((item) => ({
+        ...item,
+        attributes: {
+          ...item.attributes,
+          excerpt: item.attributes.content?.substring(0, 150) || '',
+          readingTime: Math.ceil(
+            (item.attributes.content?.split(/\s+/).length || 0) / 200
+          ),
+        },
+      }));
 
-    return { data: entries };
-  }
-}));
+      return { data: transformedData, meta };
+    },
+
+    async featured(ctx) {
+      const entries = await strapi.entityService.findMany(
+        'api::article.article',
+        {
+          filters: {
+            featured: true,
+            publishedAt: { $notNull: true },
+          },
+          sort: { publishedAt: 'desc' },
+          limit: 10,
+        }
+      );
+
+      return { data: entries };
+    },
+  })
+);
 ```
 
-```javascript
-// src/api/article/routes/article.js
-module.exports = {
+```typescript
+// src/api/article/routes/article.ts
+import type { Core } from '@strapi/strapi';
+
+export default factories.createCoreRouter('api::article.article', {
+  config: {
+    find: {
+      auth: false, // Public access
+      policies: [],
+      middlewares: [],
+    },
+    findOne: {
+      auth: false,
+      policies: [],
+      middlewares: [],
+    },
+    create: {
+      auth: true,
+      policies: ['plugin::users-permissions.isAuthenticated'],
+      middlewares: [],
+    },
+    update: {
+      auth: true,
+      policies: ['global::is-owner-or-admin'],
+      middlewares: [],
+    },
+    delete: {
+      auth: true,
+      policies: ['global::is-owner-or-admin'],
+      middlewares: [],
+    },
+  },
+});
+
+// Custom routes
+const customRoutes: Core.RouterConfig = {
+  type: 'content-api',
   routes: [
     {
       method: 'GET',
       path: '/articles/featured',
-      handler: 'article.featured',
+      handler: 'api::article.article.featured',
       config: {
         policies: [],
         middlewares: [],
@@ -841,6 +1607,8 @@ module.exports = {
     },
   ],
 };
+
+export { customRoutes };
 ```
 
 ---
@@ -855,23 +1623,28 @@ module.exports = {
 
 ---
 
-## Notes
+## Key Takeaways
 
-### Key Takeaways
+### REST API
+- Extend default controllers to add custom logic
+- Create custom routes for specialized operations
+- Transform responses to match frontend needs
+- Always use sanitization when replacing core actions
 
-- Customize REST endpoints by overriding controllers
-- Add custom routes for additional endpoints
-- Transform API responses as needed
-- Use middleware for cross-cutting concerns
-- Implement policies for authorization
-- Handle errors consistently
+### GraphQL API
+- Custom resolvers extend default functionality
+- Mutations handle data modifications
+- Use authentication and authorization in resolvers
+- Transform responses to add computed fields
 
-### Important Reminders
+### Middleware & Policies
+- Middleware handles cross-cutting concerns
+- Policies enforce authorization rules
+- Both can be applied globally or per-route
 
-- Follow REST conventions
+### Best Practices
 - Always validate inputs
-- Implement proper error handling
-- Use policies for authorization
+- Handle errors gracefully
+- Use consistent response formats
 - Document your API endpoints
-- Consider API versioning for breaking changes
-
+- Implement rate limiting for production
